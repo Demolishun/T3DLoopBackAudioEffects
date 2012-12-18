@@ -15,11 +15,9 @@
 #include <Audioclient.h>
 #include <Audiopolicy.h>
 #include <Mmreg.h>
-//#include <windows.h>
-//#include <winnt.h>
 
-#define AUDIO_FREQ_BANDS 8
-#define AUDIO_FFT_BINS 128
+#define AUDIO_FREQ_BANDS 16
+#define AUDIO_FFT_BINS 256
 #define AUDIO_DATA_GAIN 1.0f
 
 // new type
@@ -30,14 +28,14 @@ U32 i;
 };
 // transfer variables
 volatile F32_U32 AudioFreqOutput[AUDIO_FREQ_BANDS];  // controlled by loopback thread
+volatile U32 AudioBandFreqs[AUDIO_FREQ_BANDS]; // controlled by loopback thread
 //volatile F32_U32 AudioFilterValues[AUDIO_FREQ_BANDS];  // controlled by main thread
 // working buffers to store data and use in equations in loopback thread
 F32 _AudioFreqOutput[AUDIO_FREQ_BANDS];
-//F32 _AudioFilterValues[AUDIO_FREQ_BANDS];
 
 //#define REFTIMES_PER_SEC  10000000
-//#define REFTIMES_PER_SEC  (10000000/20) // run every 50 mS
-#define REFTIMES_PER_SEC  (10000000/10) // run every 100 mS
+#define REFTIMES_PER_SEC  (10000000/20) // run every 50 mS
+//#define REFTIMES_PER_SEC  (10000000/10) // run every 100 mS
 #define REFTIMES_PER_MILLISEC  (REFTIMES_PER_SEC/1000)
 
 #define AUDIOLB_EXIT_ON_ERROR(hres)  \
