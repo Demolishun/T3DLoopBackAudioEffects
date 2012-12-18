@@ -18,8 +18,10 @@
 //#include <windows.h>
 //#include <winnt.h>
 
-#define AUDIO_FREQ_BANDS 5
-#define MS_SLEEP_TIME 10
+#define AUDIO_FREQ_BANDS 8
+#define AUDIO_FFT_BANDS 128
+#define AUDIO_DATA_GAIN 1.0f
+
 // new type
 union F32_U32
 {
@@ -28,13 +30,14 @@ U32 i;
 };
 // transfer variables
 volatile F32_U32 AudioFreqOutput[AUDIO_FREQ_BANDS];  // controlled by loopback thread
-volatile F32_U32 AudioFilterValues[AUDIO_FREQ_BANDS];  // controlled by main thread
+//volatile F32_U32 AudioFilterValues[AUDIO_FREQ_BANDS];  // controlled by main thread
 // working buffers to store data and use in equations in loopback thread
 F32 _AudioFreqOutput[AUDIO_FREQ_BANDS];
-F32 _AudioFilterValues[AUDIO_FREQ_BANDS];
+//F32 _AudioFilterValues[AUDIO_FREQ_BANDS];
 
 //#define REFTIMES_PER_SEC  10000000
-#define REFTIMES_PER_SEC  (10000000/20) // run every 50 mS
+//#define REFTIMES_PER_SEC  (10000000/20) // run every 50 mS
+#define REFTIMES_PER_SEC  (10000000/10) // run every 100 mS
 #define REFTIMES_PER_MILLISEC  (REFTIMES_PER_SEC/1000)
 
 #define AUDIOLB_EXIT_ON_ERROR(hres)  \
@@ -69,6 +72,7 @@ class AudioLoopbackThread : public Thread
 
 AudioLoopbackThread *_activeLoopbackThread = NULL;
 
-void audioLoopbackFunction(void *data);
+inline F32 hanningWindow(F32 data, U32 i, U32 s);
+inline F32 lowPassFilter(F32 input, F32 last, F32 filter);
 
 #endif // _LOOPBACK_AUDIO_H_

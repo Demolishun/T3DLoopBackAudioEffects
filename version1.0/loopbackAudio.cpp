@@ -2,9 +2,13 @@
 
 #include "console/engineAPI.h"
 #include "core/stream/memStream.h"
-#include <avrt.h>
+//#include <avrt.h>
+//#pragma comment(lib, "Avrt.lib")
 
-#pragma comment(lib, "Avrt.lib")
+#include "kiss_fft/kiss_fft.h"
+#include "kiss_fft/kiss_fftr.h"
+
+#include <complex>
 
 /*
 The audio frequency data will be divided into freq bands from low to high.
@@ -108,6 +112,12 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
    hr = pAudioClient->Start();  // Start recording.
    AUDIOLB_EXIT_ON_ERROR(hr)
 
+   // freq per bin in FFT
+   // Fs/N where Fs=sample rate N=FFT width
+   // ignore upper half of FFT output
+
+   F32 summing_buffer[AUDIO_FREQ_BANDS];
+
    // thread control loop
    while(!checkForStop()){            
       Sleep(hnsActualDuration/REFTIMES_PER_MILLISEC/2);
@@ -115,7 +125,16 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
       hr = pCaptureClient->GetNextPacketSize(&packetLength);
       AUDIOLB_EXIT_ON_ERROR(hr)
 
-      while (packetLength != 0)
+      // keep packet length an even number
+      packetLength &= 0xFFFFFFFE;
+      //Con::printf("%d",packetLength);
+
+      // clear summing buffer      
+      for(U32 count=0; count<AUDIO_FREQ_BANDS; count++){
+         summing_buffer[count] = 0.0f;
+      }      
+
+      while(packetLength != 0)
       {        
          // Get the available data in the shared buffer.
          hr = pCaptureClient->GetBuffer(
@@ -135,8 +154,30 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
          
          if(pData != NULL){
             F32 *pFloatData = reinterpret_cast<F32*>(pData);
-            /*
-            Con::printf("packetlength: %d",packetLength);
+            //Con::printf("packetlength: %d",packetLength);
+            F32 *windowedMonoData = new F32[packetLength];
+            for(U32 count=0; count<packetLength; count++){
+               // repack into mono and run through window function
+               //F32 packed = (pFloatData[count*pwfx->nChannels+0])*AUDIO_DATA_GAIN;
+               F32 packed = (pFloatData[count*pwfx->nChannels+0] + pFloatData[count*pwfx->nChannels+1])*AUDIO_DATA_GAIN;
+               //Con::printf("%.8f",packed);
+               windowedMonoData[count] = hanningWindow(packed, count, packetLength);
+               //windowedMonoData[count] = packed;
+            }
+
+            kiss_fftr_cfg st = kiss_fftr_alloc(AUDIO_FFT_BANDS,0,0,0);            
+            kiss_fft_cpx* out = (kiss_fft_cpx*)malloc(sizeof(kiss_fft_cpx)*(AUDIO_FFT_BANDS/2+1));
+            kiss_fftr(st,windowedMonoData,(kiss_fft_cpx*)out);  
+            
+            // combine freqs into bands
+            for(U32 count=0; count<(AUDIO_FFT_BANDS/2); count++){
+               U32 resIndex = (count/((AUDIO_FFT_BANDS/2)/AUDIO_FREQ_BANDS)) % AUDIO_FREQ_BANDS;                         
+               F32 combined = out[count].r * out[count].r + out[count].i * out[count].i;
+               //summing_buffer[resIndex] = lowPassFilter(combined, summing_buffer[resIndex], 0.2f);
+               summing_buffer[resIndex] = combined;
+            }            
+            
+            /*            
             for(U32 count=0; count<packetLength; count++){         
                F32 mixedchannels = (pFloatData[count*pwfx->nChannels+0] + pFloatData[count*pwfx->nChannels+1]);               
                //F32 left = pFloatData[count*pwfx->nChannels+0]*TEMP_LB_GAIN;
@@ -147,14 +188,18 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
                //if(right >= 0.0f)
                //_AudioFreqOutput[1] = _AudioFreqOutput[1] + TEMP_LB_FILTER_VAL * (mFabs(right) - _AudioFreqOutput[1]);
             }
-            */
-            
-            
+            */                      
+
+            if(windowedMonoData)
+               delete windowedMonoData;
+            if(st)
+               kiss_fft_free(st);
+            if(out)
+               free(out);
          }else{
             // do calcs with zero for values
             // not needed, the value will zero out after audio source is removed
-         }   
-         
+         }                    
       
          // release data
          hr = pCaptureClient->ReleaseBuffer(numFramesAvailable);
@@ -163,6 +208,12 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
          // start next capture
          hr = pCaptureClient->GetNextPacketSize(&packetLength);
          AUDIOLB_EXIT_ON_ERROR(hr)
+      }
+
+      // dB stuff
+      for(U32 count=0; count<AUDIO_FREQ_BANDS; count++){
+         _AudioFreqOutput[count] = 10.0f * (F32)log10(summing_buffer[count]);
+         //_AudioFreqOutput[count] = summing_buffer[count]; 
       }
 
       // update output variables      
@@ -193,16 +244,18 @@ Exit:
    //   AvRevertMmThreadCharacteristics(hTask);
 }
 
-HRESULT LoopbackCapture(
-    IMMDevice *pMMDevice,
-    HMMIO hFile,
-    bool bInt16,
-    HANDLE hStartedEvent,
-    HANDLE hStopEvent,
-    PUINT32 pnFrames
-);
+// window functions
+// data = sample
+// i = index
+// s = number of samples
+inline F32 hanningWindow(F32 data, U32 i, U32 s)
+{
+   return data*0.5f*(1.0f-mCos(M_2PI*(F32)(i)/(F32)(s-1.0f)));
+}
 
-void audioLoopbackFunction(void *data){  
+inline F32 lowPassFilter(F32 input, F32 last, F32 filter)
+{
+   return last + filter * (input - last);
 }
 
 // atomic read console function
@@ -236,6 +289,7 @@ DefineEngineFunction( getAudioLoopBackFreqs, const char*, (),,
    return ret;
 }
 
+/*
 DefineEngineFunction( setAudioLoopBackFilters, void, (F32 filter1,F32 filter2,F32 filter3,F32 filter4,F32 filter5),,
    "Get the frequency information from processing the current AudioLoopBackData\n"
    "@param No parameters.\n"
@@ -249,6 +303,7 @@ DefineEngineFunction( setAudioLoopBackFilters, void, (F32 filter1,F32 filter2,F3
    AudioFilterValues[3].f = filter4;
    AudioFilterValues[4].f = filter5;
 }
+*/
 
 DefineEngineFunction( startAudioLoopBack, void, (),,
    "Get the frequency information from processing the current AudioLoopBackData\n"
@@ -277,3 +332,7 @@ DefineEngineFunction( stopAudioLoopBack, void, (),,
       Con::warnf("startAudioLoopBack: No active audio loopback to stop.");
    }
 }
+
+// resources
+// http://stackoverflow.com/questions/9645983/fft-applying-window-on-pcm-data
+// http://stackoverflow.com/questions/4675457/how-to-generate-the-audio-spectrum-using-fft-in-c
