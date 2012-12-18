@@ -19,7 +19,7 @@
 //#include <winnt.h>
 
 #define AUDIO_FREQ_BANDS 8
-#define AUDIO_FFT_BANDS 128
+#define AUDIO_FFT_BINS 128
 #define AUDIO_DATA_GAIN 1.0f
 
 // new type
@@ -61,13 +61,34 @@ class AudioLoopbackThread : public Thread
       WAVEFORMATEX *pwfx;
       UINT32 packetLength;      
       BYTE *pData;
-      DWORD flags;
+      DWORD flags;            
 
    public:
       AudioLoopbackThread(bool start_thread = false, bool autodelete = false);
 
       // overriden methods
       void run(void *arg /* = 0 */);
+
+      // data for calcs in game
+
+      // sample rate of audio
+      S32 getSampleRate(){
+         if(pwfx != NULL)
+            return pwfx->nSamplesPerSec;
+         else
+            return -1;
+      };
+      // bin width of FFT            
+      U32 getFFTBinWidth(){
+         return AUDIO_FFT_BINS;
+      }
+      // number of bands
+      U32 getFreqBands(){
+         return AUDIO_FREQ_BANDS;
+      }
+      // calculate frequency per BIN as BIN*SR/FFTWIDTH
+      // each band = sumof(((AUDIO_FFT_BINS/2)/AUDIO_FREQ_BANDS)) % AUDIO_FREQ_BANDS)
+      // basically the bands are clumped using a modulus to determine which bins belong in which band
 };
 
 AudioLoopbackThread *_activeLoopbackThread = NULL;

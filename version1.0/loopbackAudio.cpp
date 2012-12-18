@@ -165,13 +165,13 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
                //windowedMonoData[count] = packed;
             }
 
-            kiss_fftr_cfg st = kiss_fftr_alloc(AUDIO_FFT_BANDS,0,0,0);            
-            kiss_fft_cpx* out = (kiss_fft_cpx*)malloc(sizeof(kiss_fft_cpx)*(AUDIO_FFT_BANDS/2+1));
+            kiss_fftr_cfg st = kiss_fftr_alloc(AUDIO_FFT_BINS,0,0,0);            
+            kiss_fft_cpx* out = (kiss_fft_cpx*)malloc(sizeof(kiss_fft_cpx)*(AUDIO_FFT_BINS/2+1));
             kiss_fftr(st,windowedMonoData,(kiss_fft_cpx*)out);  
             
             // combine freqs into bands
-            for(U32 count=0; count<(AUDIO_FFT_BANDS/2); count++){
-               U32 resIndex = (count/((AUDIO_FFT_BANDS/2)/AUDIO_FREQ_BANDS)) % AUDIO_FREQ_BANDS;                         
+            for(U32 count=0; count<(AUDIO_FFT_BINS/2); count++){
+               U32 resIndex = (count/((AUDIO_FFT_BINS/2)/AUDIO_FREQ_BANDS)) % AUDIO_FREQ_BANDS;                         
                F32 combined = out[count].r * out[count].r + out[count].i * out[count].i;
                //summing_buffer[resIndex] = lowPassFilter(combined, summing_buffer[resIndex], 0.2f);
                summing_buffer[resIndex] = combined;
