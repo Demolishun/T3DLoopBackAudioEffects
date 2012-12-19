@@ -16,7 +16,7 @@
 #include <Audiopolicy.h>
 #include <Mmreg.h>
 
-#define AUDIO_FREQ_BANDS 16
+#define AUDIO_FREQ_BANDS 9
 #define AUDIO_FFT_BINS 256
 #define AUDIO_DATA_GAIN 1.0f
 
@@ -28,10 +28,11 @@ U32 i;
 };
 // transfer variables
 volatile F32_U32 AudioFreqOutput[AUDIO_FREQ_BANDS];  // controlled by loopback thread
-volatile U32 AudioBandFreqs[AUDIO_FREQ_BANDS]; // controlled by loopback thread
-//volatile F32_U32 AudioFilterValues[AUDIO_FREQ_BANDS];  // controlled by main thread
+volatile U32 AudioBandFreqs[AUDIO_FREQ_BANDS]; // controlled by main thread
+
 // working buffers to store data and use in equations in loopback thread
-F32 _AudioFreqOutput[AUDIO_FREQ_BANDS];
+F32 _AudioFreqOutput[AUDIO_FREQ_BANDS]; // internal value
+U32 _AudioBandFreqs[AUDIO_FREQ_BANDS]; // internal data
 
 //#define REFTIMES_PER_SEC  10000000
 #define REFTIMES_PER_SEC  (10000000/20) // run every 50 mS
