@@ -81,13 +81,13 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
 
    // ensure format is something we can use
    if(pwfx->wFormatTag == WAVE_FORMAT_IEEE_FLOAT){
-      //if(pwfx->nChannels != 2) // need stereo
-      //   hr = -1;
+      if(pwfx->nChannels < 2) // need stereo
+         hr = -1;
    }else if(pwfx->wFormatTag == WAVE_FORMAT_EXTENSIBLE){
       PWAVEFORMATEXTENSIBLE pEx = reinterpret_cast<PWAVEFORMATEXTENSIBLE>(pwfx);
       if(IsEqualGUID(KSDATAFORMAT_SUBTYPE_IEEE_FLOAT, pEx->SubFormat)){
-         //if(pwfx->nChannels != 2) // need stereo
-         //   hr = -1;
+         if(pwfx->nChannels < 2) // need stereo
+            hr = -1;
       }else{
          hr = -1;
       }
@@ -188,24 +188,29 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
             samplesize += packetLength;            
             if(samplesize > buffersize || windowedMonoData == NULL){
                buffersize = samplesize;
-               windowedMonoData = (F32 *)realloc(windowedMonoData, sizeof(F32)*buffersize);               
+               windowedMonoData = (F32 *)realloc(windowedMonoData, sizeof(F32)*buffersize*2);               
                //Con::printf("%d", buffersize);  // verify allocation is working
             }
             F32 *pFloatData = reinterpret_cast<F32*>(pData);
             //Con::printf("packetlength: %d",packetLength);
-            //F32 *windowedMonoData = new F32[packetLength];
+            //F32 *windowedMonoData = new F32[packetLength];            
+            
             for(U32 count=0; count<packetLength; count++){
                // repack into mono and run through window function
                //F32 packed = (pFloatData[count*pwfx->nChannels+0])*AUDIO_DATA_GAIN;
+               /*
                F32 packed;
                if(pwfx->nChannels > 1)
                   packed = (pFloatData[count*pwfx->nChannels+0] + pFloatData[count*pwfx->nChannels+1])*AUDIO_DATA_GAIN;
                else
                   packed = (pFloatData[count*pwfx->nChannels+0])*AUDIO_DATA_GAIN;
-               //Con::printf("%.8f",packed);
-               windowedMonoData[currentindex+count] = packed;//hanningWindow(packed, count, packetLength);
+               */
+               //Con::printf("%.8f",packed);        
+               windowedMonoData[currentindex*2+count*2+0] = pFloatData[count*pwfx->nChannels+0];
+               windowedMonoData[currentindex*2+count*2+1] = pFloatData[count*pwfx->nChannels+1];
+               //windowedMonoData[currentindex+count] = packed;//hanningWindow(packed, count, packetLength);
                //windowedMonoData[count] = packed;
-            }
+            }            
 
             /*
             kiss_fftr_cfg st = kiss_fftr_alloc(packetLength,0,0,0);            
@@ -288,16 +293,24 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
       mutex.lock( &extBuffMutex, true );
       if(buffersize > externalBufferSize){
          externalBufferSize = buffersize;
-         externalBuffer = (F32 *)realloc(externalBuffer, sizeof(F32)*externalBufferSize);    
+         externalBuffer = (F32 *)realloc(externalBuffer, sizeof(F32)*externalBufferSize*2);    
       }
       // copy raw sample data to other buffer
-      memcpy(externalBuffer,windowedMonoData,sizeof(F32)*samplesize);
+      memcpy(externalBuffer,windowedMonoData,sizeof(F32)*samplesize*2);
       lastSampleSize = samplesize;
       mutex.unlock();
 
+      // call script function in main thread
+      // called too fast and it will cause timing problems
+      // 100mS too fast, 200mS okay?
+      //const char* argv[] = {"onLoopBackAudioAcquire"};
+      //Con::execute(1,argv);
+
       // window the data
-      for(U32 count=0; count<samplesize; count++){         
-         windowedMonoData[count] = hanningWindow(windowedMonoData[count], count, samplesize);         
+      F32 packed;
+      for(U32 count=0; count<samplesize; count++){           
+         packed = (windowedMonoData[count*2+0] + windowedMonoData[count*2+1])*AUDIO_DATA_GAIN;       
+         windowedMonoData[count] = hanningWindow(packed, count, samplesize);         
       }
 
       kiss_fftr_cfg st = kiss_fftr_alloc(samplesize,0,0,0);            

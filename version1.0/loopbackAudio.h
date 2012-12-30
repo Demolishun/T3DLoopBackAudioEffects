@@ -38,6 +38,7 @@ U32 _AudioBandFreqs[AUDIO_FREQ_BANDS]; // internal data
 //#define REFTIMES_PER_SEC  10000000
 #define REFTIMES_PER_SEC  (10000000/20) // run every 50 mS
 //#define REFTIMES_PER_SEC  (10000000/10) // run every 100 mS
+//#define REFTIMES_PER_SEC  (10000000/5) // run every 200 mS
 //#define REFTIMES_PER_SEC  (10000000/50) // run every 20 mS
 #define REFTIMES_PER_MILLISEC  (REFTIMES_PER_SEC/1000)
 
