@@ -6,6 +6,7 @@
 #include "platformWin32/platformWin32.h"
 #endif
 #include "platform/threads/thread.h"
+#include "platform/threads/mutex.h"
 #include "console/console.h"
 #include "platform/platformIntrinsics.h"
 
@@ -37,6 +38,7 @@ U32 _AudioBandFreqs[AUDIO_FREQ_BANDS]; // internal data
 //#define REFTIMES_PER_SEC  10000000
 #define REFTIMES_PER_SEC  (10000000/20) // run every 50 mS
 //#define REFTIMES_PER_SEC  (10000000/10) // run every 100 mS
+//#define REFTIMES_PER_SEC  (10000000/50) // run every 20 mS
 #define REFTIMES_PER_MILLISEC  (REFTIMES_PER_SEC/1000)
 
 #define AUDIOLB_EXIT_ON_ERROR(hres)  \
@@ -60,10 +62,20 @@ class AudioLoopbackThread : public Thread
       WAVEFORMATEX *pwfx;
       UINT32 packetLength;      
       BYTE *pData;
-      DWORD flags;            
+      DWORD flags;    
+   
+      // internal sample data
+      F32 *windowedMonoData;
+
+      // external sample access
+      U32 lastSampleSize;
+      U32 externalBufferSize;
+      F32 *externalBuffer;
+      Mutex extBuffMutex;
 
    public:
       AudioLoopbackThread(bool start_thread = false, bool autodelete = false);
+      ~AudioLoopbackThread();
 
       // overriden methods
       void run(void *arg /* = 0 */);
@@ -77,12 +89,12 @@ class AudioLoopbackThread : public Thread
          else
             return -1;
       };
-      // bin width of FFT            
+      // bin width of FFT         
       U32 getFFTBinWidth(){
-         return AUDIO_FFT_BINS;
+         return dAtomicRead(lastSampleSize);
       }
       // number of bands
-      U32 getFreqBands(){
+      U32 getNumFreqBands(){
          return AUDIO_FREQ_BANDS;
       }
       // calculate frequency per BIN as BIN*SR/FFTWIDTH

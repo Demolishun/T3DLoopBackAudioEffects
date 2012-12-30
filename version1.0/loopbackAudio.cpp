@@ -30,7 +30,7 @@ AudioLoopbackThread::AudioLoopbackThread(bool start_thread, bool autodelete)
    packetLength = 0; 
 
    // sane defaults
-   U32 freq = 60;
+   U32 freq = 30;
    for(U32 count=0; count<AUDIO_FREQ_BANDS; count++){
       AudioBandFreqs[count] = freq;
       //Con::printf("band %d: %d",count,freq);
@@ -41,6 +41,19 @@ AudioLoopbackThread::AudioLoopbackThread(bool start_thread, bool autodelete)
       AudioFreqOutput[count].f = 0.0f;
       _AudioFreqOutput[count] = 0.0f;      
    }
+
+   windowedMonoData = NULL;
+   externalBuffer = NULL;
+   externalBufferSize = 0;
+   lastSampleSize = 0;
+}
+
+AudioLoopbackThread::~AudioLoopbackThread(){
+   // free memory
+   if(windowedMonoData)
+      free(windowedMonoData);
+   if(externalBuffer)
+      free(externalBuffer);
 }
 
 void AudioLoopbackThread::run(void *arg /* = 0 */)
@@ -68,13 +81,13 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
 
    // ensure format is something we can use
    if(pwfx->wFormatTag == WAVE_FORMAT_IEEE_FLOAT){
-      if(pwfx->nChannels != 2) // need stereo
-         hr = -1;
+      //if(pwfx->nChannels != 2) // need stereo
+      //   hr = -1;
    }else if(pwfx->wFormatTag == WAVE_FORMAT_EXTENSIBLE){
       PWAVEFORMATEXTENSIBLE pEx = reinterpret_cast<PWAVEFORMATEXTENSIBLE>(pwfx);
       if(IsEqualGUID(KSDATAFORMAT_SUBTYPE_IEEE_FLOAT, pEx->SubFormat)){
-         if(pwfx->nChannels != 2) // need stereo
-            hr = -1;
+         //if(pwfx->nChannels != 2) // need stereo
+         //   hr = -1;
       }else{
          hr = -1;
       }
@@ -124,6 +137,9 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
    // ignore upper half of FFT output   
 
    F32 summing_buffer[AUDIO_FREQ_BANDS];
+   U32 samplesize = 0; 
+   U32 buffersize = 0;
+   //U32 sum_divisor = 0;   
 
    // thread control loop
    while(!checkForStop()){            
@@ -139,14 +155,15 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
       AUDIOLB_EXIT_ON_ERROR(hr)
 
       // keep packet length an even number
-      packetLength &= 0xFFFFFFFE;      
+      //packetLength &= 0xFFFFFFFE;      
 
       // clear summing buffer      
       for(U32 count=0; count<AUDIO_FREQ_BANDS; count++){
          summing_buffer[count] = 0.0f;
       }    
 
-      U32 sum_divisor = 0;  
+      //sum_divisor = 0;  
+      samplesize = 0;      
 
       while(packetLength != 0)
       {        
@@ -167,18 +184,30 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
          #define TEMP_LB_GAIN 1.0f
          
          if(pData != NULL){
+            U32 currentindex = samplesize;
+            samplesize += packetLength;            
+            if(samplesize > buffersize || windowedMonoData == NULL){
+               buffersize = samplesize;
+               windowedMonoData = (F32 *)realloc(windowedMonoData, sizeof(F32)*buffersize);               
+               //Con::printf("%d", buffersize);  // verify allocation is working
+            }
             F32 *pFloatData = reinterpret_cast<F32*>(pData);
             //Con::printf("packetlength: %d",packetLength);
-            F32 *windowedMonoData = new F32[packetLength];
+            //F32 *windowedMonoData = new F32[packetLength];
             for(U32 count=0; count<packetLength; count++){
                // repack into mono and run through window function
                //F32 packed = (pFloatData[count*pwfx->nChannels+0])*AUDIO_DATA_GAIN;
-               F32 packed = (pFloatData[count*pwfx->nChannels+0] + pFloatData[count*pwfx->nChannels+1])*AUDIO_DATA_GAIN;
+               F32 packed;
+               if(pwfx->nChannels > 1)
+                  packed = (pFloatData[count*pwfx->nChannels+0] + pFloatData[count*pwfx->nChannels+1])*AUDIO_DATA_GAIN;
+               else
+                  packed = (pFloatData[count*pwfx->nChannels+0])*AUDIO_DATA_GAIN;
                //Con::printf("%.8f",packed);
-               windowedMonoData[count] = hanningWindow(packed, count, packetLength);
+               windowedMonoData[currentindex+count] = packed;//hanningWindow(packed, count, packetLength);
                //windowedMonoData[count] = packed;
             }
 
+            /*
             kiss_fftr_cfg st = kiss_fftr_alloc(packetLength,0,0,0);            
             kiss_fft_cpx* out = (kiss_fft_cpx*)malloc(sizeof(kiss_fft_cpx)*(packetLength/2+1));
             kiss_fftr(st,windowedMonoData,(kiss_fft_cpx*)out);  
@@ -203,6 +232,7 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
             }
 
             sum_divisor++;
+            */
             
             /*
             for(U32 count=0; count<(AUDIO_FFT_BINS/2); count++){
@@ -212,13 +242,15 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
                summing_buffer[resIndex] += combined;
             } 
             */           
-                                           
+               
+            /*                            
             if(windowedMonoData)
                delete windowedMonoData;
             if(st)
                kiss_fft_free(st);
             if(out)
                free(out);
+            */
          }else{
             // do calcs with zero for values
             // not needed, the value will zero out after audio source is removed
@@ -234,6 +266,7 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
       }
 
       // dB stuff
+      /*
       if(sum_divisor){
          for(U32 count=0; count<AUDIO_FREQ_BANDS; count++){
             F32 sum = summing_buffer[count]/(F32)sum_divisor;
@@ -242,6 +275,69 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
             //_AudioFreqOutput[count] = sum; 
          }
       }
+      */
+
+      samplesize &= 0xFFFFFFFE;
+      //Con::printf("%d",samplesize);
+      if(!samplesize)
+         continue;
+
+      // resize external buffer as needed
+      // access to the external buffer is controlled by mutex
+      MutexHandle mutex;
+      mutex.lock( &extBuffMutex, true );
+      if(buffersize > externalBufferSize){
+         externalBufferSize = buffersize;
+         externalBuffer = (F32 *)realloc(externalBuffer, sizeof(F32)*externalBufferSize);    
+      }
+      // copy raw sample data to other buffer
+      memcpy(externalBuffer,windowedMonoData,sizeof(F32)*samplesize);
+      lastSampleSize = samplesize;
+      mutex.unlock();
+
+      // window the data
+      for(U32 count=0; count<samplesize; count++){         
+         windowedMonoData[count] = hanningWindow(windowedMonoData[count], count, samplesize);         
+      }
+
+      kiss_fftr_cfg st = kiss_fftr_alloc(samplesize,0,0,0);            
+      kiss_fft_cpx* out = (kiss_fft_cpx*)malloc(sizeof(kiss_fft_cpx)*(samplesize/2+1));
+      kiss_fftr(st,windowedMonoData,(kiss_fft_cpx*)out);  
+      
+      // combine freqs into bands
+      U32 bandstep = 0;
+      U32 currentfreqbin = 0;
+      
+      for(U32 count=0; count<(samplesize/2) && bandstep<AUDIO_FREQ_BANDS;){ 
+         // update value              
+         F32 combined = out[count].r * out[count].r + out[count].i * out[count].i;
+         summing_buffer[bandstep] = combined;
+         
+         // increment and ready comparison data
+         count++;
+         currentfreqbin = (count*pwfx->nSamplesPerSec)/samplesize;
+         //Con::printf("%d", currentfreqbin);
+         if(currentfreqbin > _AudioBandFreqs[bandstep]){
+            bandstep++;
+            //Con::printf("%d", currentfreqbin);
+         }
+      }
+
+      if(st)
+         kiss_fft_free(st);
+      if(out)
+         free(out);
+
+      //static F32 lowest = 0;
+      for(U32 count=0; count<AUDIO_FREQ_BANDS; count++){
+         F32 sum = summing_buffer[count];
+         F32 logged = (F32)mLog(sum);
+         //if(logged < lowest)
+         //   lowest = logged;
+         _AudioFreqOutput[count] = logged;// + mFabs(lowest);
+          
+         //_AudioFreqOutput[count] = sum; 
+      }
 
       // update output variables      
       for(int count=0; count<AUDIO_FREQ_BANDS; count++){              
@@ -249,7 +345,7 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
       }          
       //Con::printf("%.4f,%.4f",_AudioFreqOutput[0],_AudioFreqOutput[1]);
       //Con::printf("%.4f,%.4f",AudioFreqOutput[0].f,AudioFreqOutput[1].f);
-   }
+   }   
 
    hr = pAudioClient->Stop();  // Stop recording.
    AUDIOLB_EXIT_ON_ERROR(hr)

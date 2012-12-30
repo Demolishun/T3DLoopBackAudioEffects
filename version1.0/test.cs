@@ -50,10 +50,15 @@ if(getVariable("$haspos") !$= ""){
 function plotAudioLoopBackOutput(){   
    %obj = FreqPlot1; 
    %freqs = getAudioLoopBackFreqs();
+   echo(%freqs);
    %freqsNormalized = "";
    for(%count=0; %count<getWordCount(%freqs); %count++){                   
       $lb_band[%count] = getWord(%freqs,%count);
-      %freqsNormalized = %freqsNormalized SPC $lb_band[%count]/500.0;
+      //%freqsNormalized = %freqsNormalized SPC $lb_band[%count]/500.0;
+      if($lb_band[%count] < 0.0)
+         %freqsNormalized = %freqsNormalized SPC "0.0";
+      else
+         %freqsNormalized = %freqsNormalized SPC ($lb_band[%count]-0.0)/12.0;
       
       if(%count<6){
          FreqPlot1.addDatum(%count,$lb_band[%count]);
@@ -63,6 +68,7 @@ function plotAudioLoopBackOutput(){
    }
    
    %freqsNormalized = trim(%freqsNormalized);
+   //echo(%freqsNormalized);
    
    slider0.setValue(getWord(%freqsNormalized,0));
    slider1.setValue(getWord(%freqsNormalized,1));
@@ -81,19 +87,19 @@ function plotAudioLoopBackOutput(){
    // logo   
    %x = getWord($logo_pos,0);
    %y = getWord($logo_pos,1);
-   MainMenuAppLogo.position = %x-(getWord(%freqs,1)) SPC %y+(getWord(%freqs,0));
+   MainMenuAppLogo.position = %x-(getWord(%freqsNormalized,1)*50) SPC %y+(getWord(%freqsNormalized,0)*50);
    
    %x = getWord($play_pos,0);
    %y = getWord($play_pos,1);
-   PlayButton.position = %x-(getWord(%freqs,3)) SPC %y;
+   PlayButton.position = %x-(getWord(%freqsNormalized,3)*50) SPC %y;
    
    %x = getWord($options_pos,0);
    %y = getWord($options_pos,1);
-   OptionsButton.position = %x-(getWord(%freqs,4)) SPC %y;
+   OptionsButton.position = %x-(getWord(%freqsNormalized,4)*50) SPC %y;
    
    %x = getWord($exit_pos,0);
    %y = getWord($exit_pos,1);
-   ExitButton.position = %x-(getWord(%freqs,5)) SPC %y;
+   ExitButton.position = %x-(getWord(%freqsNormalized,5)*50) SPC %y;
          
 	$ploopbackschedule = schedule(100,0,plotAudioLoopBackOutput);
 }
