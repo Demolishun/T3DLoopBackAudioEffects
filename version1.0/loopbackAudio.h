@@ -9,6 +9,7 @@
 #include "platform/threads/mutex.h"
 #include "console/console.h"
 #include "platform/platformIntrinsics.h"
+#include "console/simObject.h"
 
 #include <mmsystem.h>
 #include <mmdeviceapi.h>
@@ -104,6 +105,19 @@ class AudioLoopbackThread : public Thread
 };
 
 AudioLoopbackThread *_activeLoopbackThread = NULL;
+
+class LoopBackObject : public SimObject
+{
+   friend AudioLoopbackThread;
+   protected:      
+      // contoll access to buffer and details
+      static Mutex sampleBufferMutex;      
+      // 2 channels in the sample buffer
+      static F32 *sampleBuffer;
+      static U32 sampleBufferSize; // total size of buffer
+      static U32 sampleBufferSamples; // total number of samples in buffer
+      static U32 samplesPerSecond;  // used to calculate bin freqs
+};
 
 inline F32 hanningWindow(F32 data, U32 i, U32 s);
 inline F32 lowPassFilter(F32 input, F32 last, F32 filter);

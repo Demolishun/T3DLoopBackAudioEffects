@@ -290,13 +290,16 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
       // resize external buffer as needed
       // access to the external buffer is controlled by mutex
       MutexHandle mutex;
-      mutex.lock( &extBuffMutex, true );
-      if(buffersize > externalBufferSize){
-         externalBufferSize = buffersize;
-         externalBuffer = (F32 *)realloc(externalBuffer, sizeof(F32)*externalBufferSize*2);    
+      mutex.lock( &LoopBackObject::sampleBufferMutex, true );
+      if(buffersize > LoopBackObject::sampleBufferSize){
+         LoopBackObject::sampleBufferSize = buffersize;
+         LoopBackObject::sampleBuffer = (F32 *)realloc(LoopBackObject::sampleBuffer, sizeof(F32)*LoopBackObject::sampleBufferSize*2);    
       }
-      // copy raw sample data to other buffer
-      memcpy(externalBuffer,windowedMonoData,sizeof(F32)*samplesize*2);
+      // copy sample details
+      LoopBackObject::samplesPerSecond = pwfx->nSamplesPerSec;
+      LoopBackObject::sampleBufferSamples = samplesize;      
+      // copy raw sample data to LoopBackObject buffer
+      memcpy(LoopBackObject::sampleBuffer,windowedMonoData,sizeof(F32)*samplesize*2);
       lastSampleSize = samplesize;
       mutex.unlock();
 
@@ -347,7 +350,8 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
          F32 logged = (F32)mLog(sum);
          //if(logged < lowest)
          //   lowest = logged;
-         _AudioFreqOutput[count] = logged;// + mFabs(lowest);
+         //_AudioFreqOutput[count] = logged;// + mFabs(lowest);
+         _AudioFreqOutput[count] = lowPassFilter(logged,_AudioFreqOutput[count],0.2f);
           
          //_AudioFreqOutput[count] = sum; 
       }
@@ -379,6 +383,13 @@ Exit:
    //if(hTask)
    //   AvRevertMmThreadCharacteristics(hTask);
 }
+
+// objects
+Mutex LoopBackObject::sampleBufferMutex;
+F32 *LoopBackObject::sampleBuffer = NULL;
+U32 LoopBackObject::sampleBufferSize = 0;
+U32 LoopBackObject::sampleBufferSamples = 0;
+U32 LoopBackObject::samplesPerSecond = 0;
 
 // window functions
 // data = sample
