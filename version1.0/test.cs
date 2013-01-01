@@ -144,6 +144,16 @@ function startLBAudio(){
    }else{
       warn("startLBAudio() - Loop Back Audio already running.");
    }
+   
+   if(!isObject($FFTGroup)){
+      $FFTGroup = new SimGroup();
+      
+      for(%count=0; %count<10; %count++){
+         %obj = new FFTObject();
+         $FFTGroup.add(%obj);
+         addAudioLoopBackObject(%obj);
+      }
+   }
 }
 
 function stopLBAudio(){   
@@ -154,6 +164,10 @@ function stopLBAudio(){
    
    if(isObject($FFTObj)){
       $FFTObj.delete();
+   }
+   
+   if(isObject($FFTGroup)){
+      $FFTGroup.delete();
    }
 }
 

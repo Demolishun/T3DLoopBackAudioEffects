@@ -40,6 +40,7 @@ AudioLoopbackThread::AudioLoopbackThread(bool start_thread, bool autodelete)
    packetLength = 0; 
 
    // sane defaults
+   /*
    U32 freq = 30;
    for(U32 count=0; count<AUDIO_FREQ_BANDS; count++){
       AudioBandFreqs[count] = freq;
@@ -51,6 +52,7 @@ AudioLoopbackThread::AudioLoopbackThread(bool start_thread, bool autodelete)
       AudioFreqOutput[count].f = 0.0f;
       _AudioFreqOutput[count] = 0.0f;      
    }
+   */
 
    internalSampleData = NULL;
 }
@@ -176,9 +178,11 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
 
       // get frequencies per band
          // allows real time updates
+      /*
       for(U32 count=0; count<AUDIO_FREQ_BANDS; count++){
          _AudioBandFreqs[count] = dAtomicRead(AudioBandFreqs[count]);
       }
+      */
 
       hr = pCaptureClient->GetNextPacketSize(&packetLength);
       AUDIOLB_EXIT_ON_ERROR(hr)
@@ -508,6 +512,14 @@ LoopBackObject::~LoopBackObject(){
    mutex.lock( &LoopBackObject::loopbackObjectsMutex, true );
    LoopBackObject::loopbackObjects.remove(this);   
    */
+
+   // acquire mutex before delete
+   MutexHandle objectMutex;
+   objectMutex.lock( &objectSampleBufferMutex, true );  
+
+   free(objectSampleBuffer); 
+
+   //Con::printf("LoopBackObject::~LoopBackObject() - acquired objectSampleBufferMutex mutex.");
 }
 
 /*
@@ -622,6 +634,13 @@ FFTObject::FFTObject(){
    AudioFreqOutput.fill(0.0f);
 }
 FFTObject::~FFTObject(){
+   // acquire mutex before delete
+   MutexHandle mutex;
+   mutex.lock( &objectFFTDataMutex, true ); 
+
+   //free(objectFFTBinData);
+
+   //Con::printf("FFTObject::~FFTObject() - acquired objectFFTDataMutex mutex.");
 }
 // custom processing for FFT 
 void FFTObject::process_unique(){
