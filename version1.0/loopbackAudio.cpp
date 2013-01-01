@@ -18,8 +18,15 @@ AudioFreqOutput is the output buffer that contains the filtered band magnitude d
 AudioFilterValues are the filter values used to calcuate each band progressively using an exponential filter.
 */
 
+// static data
 Mutex AudioLoopbackThread::loopbackObjectsMutex;
 Vector<SimObjectPtr<LoopBackObject>> AudioLoopbackThread::loopbackObjects;
+
+Mutex AudioLoopbackThread::sampleBufferMutex;
+F32 *AudioLoopbackThread::sampleBuffer = NULL;
+U32 AudioLoopbackThread::sampleBufferSize = 0;
+U32 AudioLoopbackThread::sampleBufferSamples = 0;
+U32 AudioLoopbackThread::samplesPerSecond = 0;
 
 AudioLoopbackThread::AudioLoopbackThread(bool start_thread, bool autodelete)
 :Thread(NULL,NULL,start_thread,autodelete)
@@ -54,6 +61,7 @@ AudioLoopbackThread::~AudioLoopbackThread(){
       free(internalSampleData);  
 
    //Con::printf("Deallocating LoopBackObject::sampleBuffer");
+   /*
    MutexHandle mutex;
    mutex.lock( &LoopBackObject::sampleBufferMutex, true );
    LoopBackObject::sampleBufferSize = 0;
@@ -62,6 +70,16 @@ AudioLoopbackThread::~AudioLoopbackThread(){
    if(LoopBackObject::sampleBuffer){
       free(LoopBackObject::sampleBuffer);
       LoopBackObject::sampleBuffer = NULL;
+   }
+   */
+   MutexHandle mutex;
+   mutex.lock( &sampleBufferMutex, true );
+   sampleBufferSize = 0;
+   sampleBufferSamples = 0;
+   samplesPerSecond = 0;
+   if(sampleBuffer){
+      free(sampleBuffer);
+      sampleBuffer = NULL;
    }
    //mutex.unlock();
    //Con::printf("Done Deallocating LoopBackObject::sampleBuffer");
@@ -300,6 +318,7 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
 
       // resize external buffer as needed
       // access to the external buffer is controlled by mutex
+      /*
       MutexHandle mutex;
       mutex.lock( &LoopBackObject::sampleBufferMutex, true );
       if(buffersize > LoopBackObject::sampleBufferSize){
@@ -311,6 +330,19 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
       LoopBackObject::sampleBufferSamples = samplesize;      
       // copy raw sample data to LoopBackObject buffer
       memcpy(LoopBackObject::sampleBuffer,internalSampleData,sizeof(F32)*samplesize*AUDIO_NUM_CHANNELS);      
+      mutex.unlock();
+      */
+      MutexHandle mutex;
+      mutex.lock( &sampleBufferMutex, true );
+      if(buffersize > sampleBufferSize){
+         sampleBufferSize = buffersize;
+         sampleBuffer = (F32 *)realloc(sampleBuffer, sizeof(F32)*sampleBufferSize*AUDIO_NUM_CHANNELS);    
+      }
+      // copy sample details
+      samplesPerSecond = pwfx->nSamplesPerSec;
+      sampleBufferSamples = samplesize;      
+      // copy raw sample data to LoopBackObject buffer
+      memcpy(sampleBuffer,internalSampleData,sizeof(F32)*samplesize*AUDIO_NUM_CHANNELS);      
       mutex.unlock();
 
       // process loopback objects
@@ -421,12 +453,29 @@ Exit:
    //   AvRevertMmThreadCharacteristics(hTask);
 }
 
+void AudioLoopbackThread::addLoopbackObject(LoopBackObject* obj){
+   MutexHandle mutex;
+   mutex.lock( &loopbackObjectsMutex, true );
+   loopbackObjects.push_back(obj); 
+
+   obj->setExtSampleBuffer(&sampleBufferMutex, &sampleBuffer, &sampleBufferSize, &sampleBufferSamples, &samplesPerSecond);
+}   
+void AudioLoopbackThread::removeLoopbackObject(LoopBackObject* obj){
+   MutexHandle mutex;
+   mutex.lock( &loopbackObjectsMutex, true );
+   loopbackObjects.remove(obj);   
+
+   obj->clearExtSampleBuffer();
+}
+
 // static members
+/*
 Mutex LoopBackObject::sampleBufferMutex;
 F32 *LoopBackObject::sampleBuffer = NULL;
 U32 LoopBackObject::sampleBufferSize = 0;
 U32 LoopBackObject::sampleBufferSamples = 0;
 U32 LoopBackObject::samplesPerSecond = 0;
+*/
 // set to keep track of objects
 //Mutex LoopBackObject::loopbackObjectsMutex;
 //Vector<LoopBackObject*> LoopBackObject::loopbackObjects;
@@ -436,10 +485,16 @@ IMPLEMENT_CONOBJECT(LoopBackObject);
 
 // functions
 LoopBackObject::LoopBackObject(){
-   objectSampleFilter = 0.2f;
+   //objectSampleFilter = 0.2f;
    objectSampleBufferSize = 0;
    objectSampleBufferSamples = 0;
    objectSampleBuffer = NULL;
+
+   extSampleBufferMutex = NULL;
+   extSampleBuffer = NULL;
+   extSampleBufferSize = NULL;
+   extSampleBufferSamples = NULL;
+   extSamplesPerSecond = NULL;
 
    /*
    MutexHandle mutex;
@@ -474,19 +529,23 @@ void LoopBackObject::processLoopBack(){
 
 void LoopBackObject::process(){
    //Con::printf("LoopBackObject::process() - Processing audio data: %d",this->getId());
-   
-   // get global sample buffer
-   MutexHandle mutex;
-   mutex.lock( &sampleBufferMutex, true );   
+       
+   if(!extSampleBufferMutex){
+      Con::warnf("LoopBackObject::process() - This object not properly associated with a sample source.");
+   }
 
    // get object sample buffer
    MutexHandle objectMutex;
    objectMutex.lock( &objectSampleBufferMutex, true );
 
+   // get global sample buffer
+   MutexHandle mutex;
+   mutex.lock( extSampleBufferMutex, true );
+
    // resize buffer as needed
-   if(sampleBufferSize > objectSampleBufferSize){
+   if(*extSampleBufferSize > objectSampleBufferSize){
       //U32 diff = sampleBufferSize - objectSampleBufferSize;
-      objectSampleBufferSize = sampleBufferSize;
+      objectSampleBufferSize = *extSampleBufferSize;
       objectSampleBuffer = (F32 *)realloc(objectSampleBuffer, sizeof(F32)*objectSampleBufferSize*AUDIO_NUM_CHANNELS);          
       // init new memory
       /*
@@ -495,7 +554,8 @@ void LoopBackObject::process(){
       }
       */
    }
-   objectSampleBufferSamples = sampleBufferSamples;
+   objectSampleBufferSamples = *extSampleBufferSamples;
+   objectSamplesPerSecond = *extSamplesPerSecond;
    /*
    // filter sample data using lowPassFilter - not a good idea
    for(U32 count=0; count < objectSampleBufferSamples*AUDIO_NUM_CHANNELS; count++){
@@ -503,7 +563,7 @@ void LoopBackObject::process(){
    } 
    */  
    // copy sample data
-   memcpy(objectSampleBuffer,sampleBuffer,sizeof(F32)*objectSampleBufferSamples*AUDIO_NUM_CHANNELS);   
+   memcpy(objectSampleBuffer,*extSampleBuffer,sizeof(F32)*objectSampleBufferSamples*AUDIO_NUM_CHANNELS);   
 
    // done with global sample buffer
    mutex.unlock();
@@ -514,6 +574,38 @@ void LoopBackObject::process(){
 
    // release object mutex
    objectMutex.unlock();   
+}
+
+// use objectSampleBufferMutex to protect this call
+void LoopBackObject::setExtSampleBuffer(Mutex* extmut, F32** extbuff, U32* extbuffsize, U32* extbuffsamples, U32* extsamplessecond){
+   if(extSampleBufferMutex){
+      Con::warnf("LoopBackObject::setExtSampleBuffer - object is already associated with a sample source.  Remove the object form that source first.");
+      return;
+   }
+
+   MutexHandle objectMutex;
+   objectMutex.lock( &objectSampleBufferMutex, true );
+
+   extSampleBufferMutex = extmut;
+   extSampleBuffer = extbuff;
+   extSampleBufferSize = extbuffsize;
+   extSampleBufferSamples = extbuffsamples;
+   extSamplesPerSecond = extsamplessecond;
+}
+void LoopBackObject::clearExtSampleBuffer(){
+   if(!extSampleBufferMutex){
+      Con::warnf("LoopBackObject::clearExtSampleBuffer - object is not associated with a sample source.");
+      return;
+   }
+
+   MutexHandle objectMutex;
+   objectMutex.lock( &objectSampleBufferMutex, true );
+
+   extSampleBufferMutex = NULL;
+   extSampleBuffer = NULL;
+   extSampleBufferSize = NULL;
+   extSampleBufferSamples = NULL;
+   extSamplesPerSecond = NULL;
 }
 
 // FFT Object
@@ -570,7 +662,7 @@ void FFTObject::process_unique(){
       
       // increment and ready comparison data
       count++;
-      currentfreqbin = (count*samplesPerSecond)/samplesize;      
+      currentfreqbin = (count*objectSamplesPerSecond)/samplesize;      
       U32 tempFreq;
 
       // discriminate frequencies as a center freq for each band

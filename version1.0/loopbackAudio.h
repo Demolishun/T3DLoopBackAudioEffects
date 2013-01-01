@@ -76,6 +76,15 @@ class AudioLoopbackThread : public Thread
 
       static Mutex loopbackObjectsMutex;
       static Vector<SimObjectPtr<LoopBackObject>> loopbackObjects;
+
+   private:
+      // contol access to buffer and details
+      static Mutex sampleBufferMutex;      
+      // 2 channels in the sample buffer
+      static F32* sampleBuffer;  // should this memory ever be freed?
+      static U32 sampleBufferSize; // total size of buffer divided by 2 (stereo data)
+      static U32 sampleBufferSamples; // total number of samples in buffer
+      static U32 samplesPerSecond;  // used to calculate bin freqs
                 
    public:
       AudioLoopbackThread(bool start_thread = false, bool autodelete = false);
@@ -85,17 +94,8 @@ class AudioLoopbackThread : public Thread
       void run(void *arg /* = 0 */);
 
       // add/remove objects to process loop
-      static void addLoopbackObject(LoopBackObject* obj){
-         MutexHandle mutex;
-         mutex.lock( &loopbackObjectsMutex, true );
-         loopbackObjects.push_back(obj);
-         //loopbackObjects.
-      }      
-      static void removeLoopbackObject(LoopBackObject* obj){
-         MutexHandle mutex;
-         mutex.lock( &loopbackObjectsMutex, true );
-         loopbackObjects.remove(obj);   
-      }
+      static void addLoopbackObject(LoopBackObject* obj);        
+      static void removeLoopbackObject(LoopBackObject* obj);
 
       // sample rate of audio
       /*
@@ -131,8 +131,9 @@ class LoopBackObject : public SimObject
 {
    typedef SimObject Parent;
 
-   friend AudioLoopbackThread;
-   protected:      
+   //friend AudioLoopbackThread;
+   protected:
+      /*      
       // contol access to buffer and details
       static Mutex sampleBufferMutex;      
       // 2 channels in the sample buffer
@@ -140,18 +141,26 @@ class LoopBackObject : public SimObject
       static U32 sampleBufferSize; // total size of buffer divided by 2 (stereo data)
       static U32 sampleBufferSamples; // total number of samples in buffer
       static U32 samplesPerSecond;  // used to calculate bin freqs
+      */
 
       /*
       static Mutex loopbackObjectsMutex;
       static Vector<LoopBackObject*> loopbackObjects;
       */
+
+      Mutex* extSampleBufferMutex;
+      F32** extSampleBuffer;
+      U32* extSampleBufferSize;
+      U32* extSampleBufferSamples;
+      U32* extSamplesPerSecond; 
  
       Mutex objectSampleBufferMutex; 
       F32* objectSampleBuffer;
       U32 objectSampleBufferSize;
       U32 objectSampleBufferSamples;
+      U32 objectSamplesPerSecond;
 
-      F32 objectSampleFilter;
+      //F32 objectSampleFilter;
 
    public:
       LoopBackObject();
@@ -164,6 +173,9 @@ class LoopBackObject : public SimObject
       */
 
       static void processLoopBack();
+
+      virtual void setExtSampleBuffer(Mutex* extmut, F32** extbuff, U32* extbuffsize, U32* extbuffsamples, U32* extsamplessecond);
+      virtual void clearExtSampleBuffer();
 
       virtual void process();
       // placeholder for sub classes

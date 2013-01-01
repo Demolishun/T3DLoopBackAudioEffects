@@ -48,6 +48,12 @@ if(getVariable("$haspos") !$= ""){
 }
 
 function plotAudioLoopBackOutput(){   
+   if(!isObject($FFTObj)){
+      warn("plotAudioLoopBackOutput() - No FFTObj, stopping schedule.");
+      $ploopbackschedule = "";
+      return;
+   }
+   
    %obj = FreqPlot1; 
    //%freqs = getAudioLoopBackFreqs();
    %freqs = $FFTObj.getAudioFreqOutput();
@@ -126,23 +132,29 @@ $exit_pos = ExitButton.position;
 $haspos = true;
 
 function startLBAudio(){
-   startAudioLoopBack();
-   schedule(50,0,showBandFreqs);
-   plotAudioLoopBackOutput();
+   startAudioLoopBack();   
    
-   $FFTObj = new FFTObject(); 
-   addAudioLoopBackObject($FFTObj);
-}
-
-function showBandFreqs(){
-   echo(getAudioLoopBackBandFreqs());
+   if(!isObject($FFTObj)){
+      $FFTObj = new FFTObject(); 
+      addAudioLoopBackObject($FFTObj);
+   }
+   
+   if($ploopbackschedule $= ""){
+      plotAudioLoopBackOutput();
+   }else{
+      warn("startLBAudio() - Loop Back Audio already running.");
+   }
 }
 
 function stopLBAudio(){   
    stopAudioLoopBack();
-   cancel($ploopbackschedule);
    
-   $FFTObj.delete();
+   cancel($ploopbackschedule);
+   $ploopbackschedule = "";
+   
+   if(isObject($FFTObj)){
+      $FFTObj.delete();
+   }
 }
 
 // create loopback plot vars
