@@ -49,8 +49,10 @@ if(getVariable("$haspos") !$= ""){
 
 function plotAudioLoopBackOutput(){   
    %obj = FreqPlot1; 
-   %freqs = getAudioLoopBackFreqs();
-   echo(%freqs);
+   //%freqs = getAudioLoopBackFreqs();
+   %freqs = $FFTObj.getAudioFreqOutput();
+   //echo("old:" SPC %freqs);
+   //echo("new:" SPC %freqs);
    %freqsNormalized = "";
    for(%count=0; %count<getWordCount(%freqs); %count++){                   
       $lb_band[%count] = getWord(%freqs,%count);
@@ -69,6 +71,19 @@ function plotAudioLoopBackOutput(){
    
    %freqsNormalized = trim(%freqsNormalized);
    //echo(%freqsNormalized);
+   
+   if(isObject(PESound60)){
+      if(PESound60.orgvel $= ""){
+         PESound60.orgvel = PESound60.velocity;
+      }      
+      
+      PESound60.velocity = PESound60.orgvel+getWord(%freqsNormalized,0)*5;
+      if(%freqsNormalized > 0.25){
+         PESound60.setActive(true);
+      }else{
+         PESound60.setActive(false);
+      }
+   }
    
    slider0.setValue(getWord(%freqsNormalized,0));
    slider1.setValue(getWord(%freqsNormalized,1));
@@ -114,6 +129,9 @@ function startLBAudio(){
    startAudioLoopBack();
    schedule(50,0,showBandFreqs);
    plotAudioLoopBackOutput();
+   
+   $FFTObj = new FFTObject(); 
+   addAudioLoopBackObject($FFTObj);
 }
 
 function showBandFreqs(){
@@ -123,6 +141,8 @@ function showBandFreqs(){
 function stopLBAudio(){   
    stopAudioLoopBack();
    cancel($ploopbackschedule);
+   
+   $FFTObj.delete();
 }
 
 // create loopback plot vars
@@ -165,3 +185,22 @@ FreqPlot2.addAutoPlot(2, "$lb_band[8]", 100);
 FreqPlot1.setActive();
 FreqPlot2.setActive();
 */
+
+function onLoopBackAudioAcquire(){
+   plotAudioLoopBackOutput();
+}
+
+function makeLoopBackObjects(){
+   %obj = new FFTObject();   
+   echo("Output:" SPC %obj.getAudioFreqOutput());
+   echo("Bands:" SPC %obj.getAudioFreqBands());
+   /*
+   %obj.setAudioFreqBands("5,10,20,40");
+   echo("Output:" SPC %obj.getAudioFreqOutput());
+   echo("Bands:" SPC %obj.getAudioFreqBands());
+   
+   %obj.setAudioFreqBands("10,20,40,80,160,320,640,1280,2560,5120,10240,20480");
+   echo("Output:" SPC %obj.getAudioFreqOutput());
+   echo("Bands:" SPC %obj.getAudioFreqBands());
+   */
+}
