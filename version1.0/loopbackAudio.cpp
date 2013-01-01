@@ -339,6 +339,8 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
       //const char* argv[] = {"onProcessAudioLoopBack"};
       //Con::execute(1,argv);     
 
+      /*
+
       samplesize &= ~0x1;
       if(!samplesize)
          continue;
@@ -361,7 +363,7 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
       for(U32 count=0; count<(samplesize/2) && bandstep<AUDIO_FREQ_BANDS;){ 
          // update value              
          F32 combined = out[count].r * out[count].r + out[count].i * out[count].i;
-         summing_buffer[bandstep] = combined;
+         summing_buffer[bandstep] += combined;
          
          // increment and ready comparison data
          count++;
@@ -385,7 +387,7 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
          //if(logged < lowest)
          //   lowest = logged;
          //_AudioFreqOutput[count] = logged;// + mFabs(lowest);
-         _AudioFreqOutput[count] = lowPassFilter(logged,_AudioFreqOutput[count],0.2f);
+         _AudioFreqOutput[count] = lowPassFilter(logged,_AudioFreqOutput[count],0.5f);
           
          //_AudioFreqOutput[count] = sum; 
       }
@@ -396,6 +398,7 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
       }          
       //Con::printf("%.4f,%.4f",_AudioFreqOutput[0],_AudioFreqOutput[1]);
       //Con::printf("%.4f,%.4f",AudioFreqOutput[0].f,AudioFreqOutput[1].f);
+      */
    }   
 
    hr = pAudioClient->Stop();  // Stop recording.
@@ -518,7 +521,7 @@ IMPLEMENT_CONOBJECT(FFTObject);
 
 FFTObject::FFTObject(){
    // sane defaults
-   U32 freq = 30;
+   U32 freq = 60;
    for(U32 count=0; count < 9; count++){
       AudioFreqBands.push_back(freq);
       freq *= 2;
@@ -553,20 +556,34 @@ void FFTObject::process_unique(){
    
    // combine freqs into bands
    U32 bandstep = 0;
+   U32 binsperband = 0;
    U32 currentfreqbin = 0;
 
    Vector<F32> summing_buffer;
-   summing_buffer.setSize(AudioFreqOutput.size());  
+   summing_buffer.setSize(AudioFreqOutput.size()); 
+   summing_buffer.fill(0.0f); 
    for(U32 count=0; count<(samplesize/2) && bandstep<AudioFreqBands.size();){ 
       // update value              
       F32 combined = out[count].r * out[count].r + out[count].i * out[count].i;
-      summing_buffer[bandstep] = combined;
+      binsperband++;
+      summing_buffer[bandstep] += combined;
       
       // increment and ready comparison data
       count++;
       currentfreqbin = (count*samplesPerSecond)/samplesize;      
-      if(currentfreqbin > AudioFreqBands[bandstep]){
-         bandstep++;         
+      U32 tempFreq;
+
+      // discriminate frequencies as a center freq for each band
+      if(bandstep != AudioFreqBands.size()-1){
+         tempFreq = (AudioFreqBands[bandstep]+AudioFreqBands[bandstep+1])/2;
+      }else{
+         tempFreq = AudioFreqBands[bandstep]+AudioFreqBands[bandstep]/2;
+      }
+      if(currentfreqbin > tempFreq){ 
+         // divide magnitude of each band by the number of bins that it took to build the band          
+         summing_buffer[bandstep] /= (F32)binsperband;
+         binsperband = 0;      
+         bandstep++;
       }
    }
 
@@ -578,7 +595,7 @@ void FFTObject::process_unique(){
    for(U32 count=0; count<AudioFreqBands.size(); count++){
       F32 logged = (F32)mLog(summing_buffer[count]);
       
-      AudioFreqOutput[count] = lowPassFilter(logged,AudioFreqOutput[count],0.2f);            
+      AudioFreqOutput[count] = lowPassFilter(logged,AudioFreqOutput[count],0.5f);            
    }   
 }
 
@@ -596,6 +613,7 @@ inline F32 lowPassFilter(F32 input, F32 last, F32 filter)
    return last + filter * (input - last);
 }
 
+/*
 // atomic read console function
 DefineEngineFunction( getAudioLoopBackFreqs, const char*, (),,
    "Get the frequency information from processing the current AudioLoopBack\n"
@@ -669,25 +687,9 @@ DefineEngineFunction( setAudioLoopBackBandFreqs, void, (const char *bandfreqstr)
       value = dStrtok(NULL, " ,");
    }
 
-   delete buff;
-   
-   /* 
-   U32 audioBandFreqs[AUDIO_FREQ_BANDS];
-   for(int count=0; count<AUDIO_FREQ_BANDS; count++){
-      // data tranfers as U32           
-      audioBandFreqs[count] = dAtomicRead(AudioBandFreqs[count]);          
-   }
-   MemStream tempStream(256);
-   char buff[32];
-   for(int count=0; count<AUDIO_FREQ_BANDS; count++){
-      dSprintf(buff,32,"%d,",audioBandFreqs[count]);
-      tempStream.writeText(buff);
-   }   
-   char *ret = Con::getReturnBuffer(tempStream.getStreamSize());
-   dStrncpy(ret, (char *)tempStream.getBuffer(), tempStream.getStreamSize()-1);
-   ret[tempStream.getStreamSize()-1] = '\0';   
-   */
+   delete buff;     
 }
+*/
 
 /*
 DefineEngineFunction( setAudioLoopBackFilters, void, (F32 filter1,F32 filter2,F32 filter3,F32 filter4,F32 filter5),,
