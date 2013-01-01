@@ -293,7 +293,7 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
       }
       */
 
-      samplesize &= 0xFFFFFFFE;
+      //samplesize &= ~0x1;
       //Con::printf("%d",samplesize);
       if(!samplesize)
          continue;
@@ -338,6 +338,10 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
       //Con::execute(1,argv);
       //const char* argv[] = {"onProcessAudioLoopBack"};
       //Con::execute(1,argv);     
+
+      samplesize &= ~0x1;
+      if(!samplesize)
+         continue;
 
       // window the data
       F32 packed;
@@ -519,14 +523,63 @@ FFTObject::FFTObject(){
       AudioFreqBands.push_back(freq);
       freq *= 2;
    }
+   AudioFreqOutput.setSize(AudioFreqBands.size());
+   AudioFreqOutput.fill(0.0f);
 }
 FFTObject::~FFTObject(){
 }
-// custom processing for FFT objects
+// custom processing for FFT 
 void FFTObject::process_unique(){
    //Con::printf("FFTObject::process_unique() - Processing sample data: %d",this->getId());
 
+   MutexHandle mutex;
+   mutex.lock( &objectFFTDataMutex, true ); 
+    
+   U32 samplesize = objectSampleBufferSamples;
+   samplesize &= ~0x1; // force even
+
+   //Con::printf("samplesize: %d",samplesize);
+
+   // make mono and window the data in place
+   F32 packed;
+   for(U32 count=0; count<samplesize; count++){           
+      packed = (objectSampleBuffer[count*AUDIO_NUM_CHANNELS+0] + objectSampleBuffer[count*AUDIO_NUM_CHANNELS+1])*AUDIO_DATA_GAIN;       
+      objectSampleBuffer[count] = hanningWindow(packed, count, samplesize);         
+   }
+
+   kiss_fftr_cfg st = kiss_fftr_alloc(samplesize,0,0,0);            
+   kiss_fft_cpx* out = (kiss_fft_cpx*)malloc(sizeof(kiss_fft_cpx)*(samplesize/2+1));
+   kiss_fftr(st,objectSampleBuffer,(kiss_fft_cpx*)out);  
    
+   // combine freqs into bands
+   U32 bandstep = 0;
+   U32 currentfreqbin = 0;
+
+   Vector<F32> summing_buffer;
+   summing_buffer.setSize(AudioFreqOutput.size());  
+   for(U32 count=0; count<(samplesize/2) && bandstep<AudioFreqBands.size();){ 
+      // update value              
+      F32 combined = out[count].r * out[count].r + out[count].i * out[count].i;
+      summing_buffer[bandstep] = combined;
+      
+      // increment and ready comparison data
+      count++;
+      currentfreqbin = (count*samplesPerSecond)/samplesize;      
+      if(currentfreqbin > AudioFreqBands[bandstep]){
+         bandstep++;         
+      }
+   }
+
+   if(st)
+      kiss_fft_free(st);
+   if(out)
+      free(out);
+
+   for(U32 count=0; count<AudioFreqBands.size(); count++){
+      F32 logged = (F32)mLog(summing_buffer[count]);
+      
+      AudioFreqOutput[count] = lowPassFilter(logged,AudioFreqOutput[count],0.2f);            
+   }   
 }
 
 // window functions
@@ -713,6 +766,82 @@ DefineEngineFunction( removeAudioLoopBackObject, void, (SimObject* obj),,
       AudioLoopbackThread::removeLoopbackObject(tobj);
    else
       Con::warnf("addAudioLoopBackObject - Attempt to remove non LoopBackObject from AudioLoopBack processing.");
+}
+
+DefineEngineMethod(FFTObject, setAudioFreqBands, void, (const char* bandfreqstr),,
+   "Set FFTObject frequency bands.\n"
+   "@param Comma or space separated list of positive integers.\n"
+   "@return Nothing.\n"
+   "@ingroup AudioLoopBack")
+{
+   Vector<U32> tmpbands;
+
+   char *buff = new char[dStrlen(bandfreqstr)];
+   dStrncpy(buff,bandfreqstr,dStrlen(bandfreqstr));
+   char *value;
+   value = dStrtok(buff, " ,");   
+      
+   while(value != NULL){
+      U32 tmp = dAtoui(value);
+      tmpbands.push_back(tmp);
+      
+      value = dStrtok(NULL, " ,");
+   }   
+
+   // set bands on object
+   object->setAudioFreqBands(tmpbands);
+
+   delete buff;   
+}
+
+DefineEngineMethod(FFTObject, getAudioFreqBands, const char*, (),,
+   "Get FFTObject frequency bands.\n"
+   "@param Nothing.\n"
+   "@return Space separated list of positive integers..\n"
+   "@ingroup AudioLoopBack")
+{
+   Vector<U32> tmpbands;
+   Vector<U32>::iterator i;
+   
+   // get bands from object
+   object->getAudioFreqBands(tmpbands);
+
+   MemStream tempStream(256);
+   char buff[32];
+   for(i=tmpbands.begin(); i != tmpbands.end(); i++){
+      dSprintf(buff,32,"%d ",*i);
+      tempStream.writeText(buff);
+   }   
+   char *ret = Con::getReturnBuffer(tempStream.getStreamSize());
+   dStrncpy(ret, (char *)tempStream.getBuffer(), tempStream.getStreamSize()-1);
+   ret[tempStream.getStreamSize()-1] = '\0';
+
+   return ret;
+}
+
+DefineEngineMethod(FFTObject, getAudioFreqOutput, const char*, (),,
+   "Get FFTObject frequency magnitude output.\n"
+   "@param Nothing.\n"
+   "@return Space separated list of floats.\n"
+   "@ingroup AudioLoopBack")
+{
+   Vector<F32> tmpoutput;
+   Vector<F32>::iterator i;
+   
+   // get bands from object
+   object->getAudioFreqOutput(tmpoutput);
+
+   MemStream tempStream(256);
+   char buff[32];
+   for(i=tmpoutput.begin(); i != tmpoutput.end(); i++){
+      dSprintf(buff,32,"%.4f ",*i);
+      tempStream.writeText(buff);
+   }   
+   char *ret = Con::getReturnBuffer(tempStream.getStreamSize());
+   dStrncpy(ret, (char *)tempStream.getBuffer(), tempStream.getStreamSize()-1);
+   ret[tempStream.getStreamSize()-1] = '\0';
+
+   return ret;
 }
 
 // resources

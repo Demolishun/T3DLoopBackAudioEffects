@@ -145,8 +145,7 @@ class LoopBackObject : public SimObject
       static Mutex loopbackObjectsMutex;
       static Vector<LoopBackObject*> loopbackObjects;
       */
-
-   private:
+ 
       Mutex objectSampleBufferMutex; 
       F32* objectSampleBuffer;
       U32 objectSampleBufferSize;
@@ -182,31 +181,50 @@ class FFTObject : public LoopBackObject
       // protect FFT data in FFTObject
       Mutex objectFFTDataMutex;
       F32* objectFFTBinData;
-      Vector<F32> AudioFreqBands;
+      Vector<U32> AudioFreqBands;
       Vector<F32> AudioFreqOutput;      
 
    public:
       FFTObject();
       virtual ~FFTObject();
    
+      // custom processing for FFT 
       virtual void process_unique();
 
-      void setAudioFreqBands(Vector<F32>& bands){
+      // set the freq bands
+      void setAudioFreqBands(Vector<U32>& bands){
          MutexHandle mutex;
          mutex.lock( &objectFFTDataMutex, true );  
                 
          AudioFreqBands.clear();
          AudioFreqBands.merge(bands);
-         if(AudioFreqOutput.size() !=  AudioFreqBands.size()){                    
-            AudioFreqOutput.setSize(AudioFreqBands.size());
+         U32 outsize = AudioFreqOutput.size();
+         U32 bandsize = AudioFreqBands.size();
+         if(outsize != bandsize){                    
+            AudioFreqOutput.setSize(bandsize);
+            if(outsize < bandsize){
+               U32 diff = bandsize - outsize;
+               for(U32 count=0; count<diff; count++){
+                  AudioFreqOutput[outsize+count] = 0.0f;
+               }
+            }
          }
       }
-      void getAudioFreqBands(Vector<F32>& retbands){
+      // get the freq bands
+      void getAudioFreqBands(Vector<U32>& retbands){
          MutexHandle mutex;
          mutex.lock( &objectFFTDataMutex, true );
 
          retbands.clear();
          retbands.merge(AudioFreqBands);         
+      }
+      // get the processed FFT output divided up into bands
+      void getAudioFreqOutput(Vector<F32>& retoutput){
+         MutexHandle mutex;
+         mutex.lock( &objectFFTDataMutex, true );
+
+         retoutput.clear();
+         retoutput.merge(AudioFreqOutput);         
       }
 
       DECLARE_CONOBJECT(FFTObject);
