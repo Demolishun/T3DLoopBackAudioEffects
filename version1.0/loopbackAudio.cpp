@@ -8,7 +8,7 @@
 #include "kiss_fft/kiss_fft.h"
 #include "kiss_fft/kiss_fftr.h"
 
-#include <complex>
+//#include <complex>
 
 /*
 The audio frequency data will be divided into freq bands from low to high.
@@ -17,6 +17,9 @@ MS_SLEEP_TIME time to sleep between calculations.
 AudioFreqOutput is the output buffer that contains the filtered band magnitude data.
 AudioFilterValues are the filter values used to calcuate each band progressively using an exponential filter.
 */
+
+Mutex AudioLoopbackThread::loopbackObjectsMutex;
+Vector<SimObjectPtr<LoopBackObject>> AudioLoopbackThread::loopbackObjects;
 
 AudioLoopbackThread::AudioLoopbackThread(bool start_thread, bool autodelete)
 :Thread(NULL,NULL,start_thread,autodelete)
@@ -42,18 +45,26 @@ AudioLoopbackThread::AudioLoopbackThread(bool start_thread, bool autodelete)
       _AudioFreqOutput[count] = 0.0f;      
    }
 
-   windowedMonoData = NULL;
-   externalBuffer = NULL;
-   externalBufferSize = 0;
-   lastSampleSize = 0;
+   internalSampleData = NULL;
 }
 
 AudioLoopbackThread::~AudioLoopbackThread(){
    // free memory
-   if(windowedMonoData)
-      free(windowedMonoData);
-   if(externalBuffer)
-      free(externalBuffer);
+   if(internalSampleData)
+      free(internalSampleData);  
+
+   //Con::printf("Deallocating LoopBackObject::sampleBuffer");
+   MutexHandle mutex;
+   mutex.lock( &LoopBackObject::sampleBufferMutex, true );
+   LoopBackObject::sampleBufferSize = 0;
+   LoopBackObject::sampleBufferSamples = 0;
+   LoopBackObject::samplesPerSecond = 0;
+   if(LoopBackObject::sampleBuffer){
+      free(LoopBackObject::sampleBuffer);
+      LoopBackObject::sampleBuffer = NULL;
+   }
+   //mutex.unlock();
+   //Con::printf("Done Deallocating LoopBackObject::sampleBuffer");
 }
 
 void AudioLoopbackThread::run(void *arg /* = 0 */)
@@ -81,12 +92,12 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
 
    // ensure format is something we can use
    if(pwfx->wFormatTag == WAVE_FORMAT_IEEE_FLOAT){
-      if(pwfx->nChannels < 2) // need stereo
+      if(pwfx->nChannels < AUDIO_NUM_CHANNELS) // need stereo
          hr = -1;
    }else if(pwfx->wFormatTag == WAVE_FORMAT_EXTENSIBLE){
       PWAVEFORMATEXTENSIBLE pEx = reinterpret_cast<PWAVEFORMATEXTENSIBLE>(pwfx);
       if(IsEqualGUID(KSDATAFORMAT_SUBTYPE_IEEE_FLOAT, pEx->SubFormat)){
-         if(pwfx->nChannels < 2) // need stereo
+         if(pwfx->nChannels < AUDIO_NUM_CHANNELS) // need stereo
             hr = -1;
       }else{
          hr = -1;
@@ -186,9 +197,9 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
          if(pData != NULL){
             U32 currentindex = samplesize;
             samplesize += packetLength;            
-            if(samplesize > buffersize || windowedMonoData == NULL){
+            if(samplesize > buffersize || internalSampleData == NULL){
                buffersize = samplesize;
-               windowedMonoData = (F32 *)realloc(windowedMonoData, sizeof(F32)*buffersize*2);               
+               internalSampleData = (F32 *)realloc(internalSampleData, sizeof(F32)*buffersize*AUDIO_NUM_CHANNELS);               
                //Con::printf("%d", buffersize);  // verify allocation is working
             }
             F32 *pFloatData = reinterpret_cast<F32*>(pData);
@@ -206,8 +217,8 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
                   packed = (pFloatData[count*pwfx->nChannels+0])*AUDIO_DATA_GAIN;
                */
                //Con::printf("%.8f",packed);        
-               windowedMonoData[currentindex*2+count*2+0] = pFloatData[count*pwfx->nChannels+0];
-               windowedMonoData[currentindex*2+count*2+1] = pFloatData[count*pwfx->nChannels+1];
+               internalSampleData[currentindex*AUDIO_NUM_CHANNELS+count*AUDIO_NUM_CHANNELS+0] = pFloatData[count*pwfx->nChannels+0];
+               internalSampleData[currentindex*AUDIO_NUM_CHANNELS+count*AUDIO_NUM_CHANNELS+1] = pFloatData[count*pwfx->nChannels+1];
                //windowedMonoData[currentindex+count] = packed;//hanningWindow(packed, count, packetLength);
                //windowedMonoData[count] = packed;
             }            
@@ -293,32 +304,51 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
       mutex.lock( &LoopBackObject::sampleBufferMutex, true );
       if(buffersize > LoopBackObject::sampleBufferSize){
          LoopBackObject::sampleBufferSize = buffersize;
-         LoopBackObject::sampleBuffer = (F32 *)realloc(LoopBackObject::sampleBuffer, sizeof(F32)*LoopBackObject::sampleBufferSize*2);    
+         LoopBackObject::sampleBuffer = (F32 *)realloc(LoopBackObject::sampleBuffer, sizeof(F32)*LoopBackObject::sampleBufferSize*AUDIO_NUM_CHANNELS);    
       }
       // copy sample details
       LoopBackObject::samplesPerSecond = pwfx->nSamplesPerSec;
       LoopBackObject::sampleBufferSamples = samplesize;      
       // copy raw sample data to LoopBackObject buffer
-      memcpy(LoopBackObject::sampleBuffer,windowedMonoData,sizeof(F32)*samplesize*2);
-      lastSampleSize = samplesize;
+      memcpy(LoopBackObject::sampleBuffer,internalSampleData,sizeof(F32)*samplesize*AUDIO_NUM_CHANNELS);      
       mutex.unlock();
+
+      // process loopback objects
+      //LoopBackObject::processLoopBack();      
+      mutex.lock( &loopbackObjectsMutex, true );
+      Vector<SimObjectPtr<LoopBackObject>>::iterator i; 
+      for(i = loopbackObjects.begin(); i != loopbackObjects.end();)  
+      {  
+         LoopBackObject *obj = (*i); // (LoopBackObject *)
+         if(!obj){ 
+            loopbackObjects.remove(*i);
+            continue;
+         }
+         else
+            i++;
+            
+         obj->process();
+      } 
+      mutex.unlock();      
 
       // call script function in main thread
       // called too fast and it will cause timing problems
       // 100mS too fast, 200mS okay?
       //const char* argv[] = {"onLoopBackAudioAcquire"};
       //Con::execute(1,argv);
+      //const char* argv[] = {"onProcessAudioLoopBack"};
+      //Con::execute(1,argv);     
 
       // window the data
       F32 packed;
       for(U32 count=0; count<samplesize; count++){           
-         packed = (windowedMonoData[count*2+0] + windowedMonoData[count*2+1])*AUDIO_DATA_GAIN;       
-         windowedMonoData[count] = hanningWindow(packed, count, samplesize);         
+         packed = (internalSampleData[count*AUDIO_NUM_CHANNELS+0] + internalSampleData[count*AUDIO_NUM_CHANNELS+1])*AUDIO_DATA_GAIN;       
+         internalSampleData[count] = hanningWindow(packed, count, samplesize);         
       }
 
       kiss_fftr_cfg st = kiss_fftr_alloc(samplesize,0,0,0);            
       kiss_fft_cpx* out = (kiss_fft_cpx*)malloc(sizeof(kiss_fft_cpx)*(samplesize/2+1));
-      kiss_fftr(st,windowedMonoData,(kiss_fft_cpx*)out);  
+      kiss_fftr(st,internalSampleData,(kiss_fft_cpx*)out);  
       
       // combine freqs into bands
       U32 bandstep = 0;
@@ -384,12 +414,120 @@ Exit:
    //   AvRevertMmThreadCharacteristics(hTask);
 }
 
-// objects
+// static members
 Mutex LoopBackObject::sampleBufferMutex;
 F32 *LoopBackObject::sampleBuffer = NULL;
 U32 LoopBackObject::sampleBufferSize = 0;
 U32 LoopBackObject::sampleBufferSamples = 0;
 U32 LoopBackObject::samplesPerSecond = 0;
+// set to keep track of objects
+//Mutex LoopBackObject::loopbackObjectsMutex;
+//Vector<LoopBackObject*> LoopBackObject::loopbackObjects;
+
+// console defs
+IMPLEMENT_CONOBJECT(LoopBackObject);
+
+// functions
+LoopBackObject::LoopBackObject(){
+   objectSampleFilter = 0.2f;
+   objectSampleBufferSize = 0;
+   objectSampleBufferSamples = 0;
+   objectSampleBuffer = NULL;
+
+   /*
+   MutexHandle mutex;
+   mutex.lock( &LoopBackObject::loopbackObjectsMutex, true );
+   LoopBackObject::loopbackObjects.push_back(this);
+   */
+}
+LoopBackObject::~LoopBackObject(){
+   /*
+   MutexHandle mutex;
+   mutex.lock( &LoopBackObject::loopbackObjectsMutex, true );
+   LoopBackObject::loopbackObjects.remove(this);   
+   */
+}
+
+/*
+void LoopBackObject::processLoopBack(){ 
+   Vector<LoopBackObject*>::iterator i; 
+
+   MutexHandle mutex;
+   mutex.lock( &loopbackObjectsMutex, true );   
+
+   // if the set exists   
+   for(i = loopbackObjects.begin(); i != loopbackObjects.end(); i++)  
+   {  
+       LoopBackObject *obj = (LoopBackObject *)(*i);  
+         
+       obj->process();
+   }      
+}
+*/
+
+void LoopBackObject::process(){
+   //Con::printf("LoopBackObject::process() - Processing audio data: %d",this->getId());
+   
+   // get global sample buffer
+   MutexHandle mutex;
+   mutex.lock( &sampleBufferMutex, true );   
+
+   // get object sample buffer
+   MutexHandle objectMutex;
+   objectMutex.lock( &objectSampleBufferMutex, true );
+
+   // resize buffer as needed
+   if(sampleBufferSize > objectSampleBufferSize){
+      //U32 diff = sampleBufferSize - objectSampleBufferSize;
+      objectSampleBufferSize = sampleBufferSize;
+      objectSampleBuffer = (F32 *)realloc(objectSampleBuffer, sizeof(F32)*objectSampleBufferSize*AUDIO_NUM_CHANNELS);          
+      // init new memory
+      /*
+      for(U32 count=(objectSampleBufferSize-diff)*AUDIO_NUM_CHANNELS; count < objectSampleBufferSize*AUDIO_NUM_CHANNELS; count++){
+         objectSampleBuffer[count] = 0.0f;            
+      }
+      */
+   }
+   objectSampleBufferSamples = sampleBufferSamples;
+   /*
+   // filter sample data using lowPassFilter - not a good idea
+   for(U32 count=0; count < objectSampleBufferSamples*AUDIO_NUM_CHANNELS; count++){
+      objectSampleBuffer[count] = lowPassFilter(sampleBuffer[count],objectSampleBuffer[count],objectSampleFilter);
+   } 
+   */  
+   // copy sample data
+   memcpy(objectSampleBuffer,sampleBuffer,sizeof(F32)*objectSampleBufferSamples*AUDIO_NUM_CHANNELS);   
+
+   // done with global sample buffer
+   mutex.unlock();
+
+   // now perform additional processing on sample data
+   // keeps from needing to reacquire mutex or call additional functions
+   process_unique();
+
+   // release object mutex
+   objectMutex.unlock();   
+}
+
+// FFT Object
+IMPLEMENT_CONOBJECT(FFTObject);
+
+FFTObject::FFTObject(){
+   // sane defaults
+   U32 freq = 30;
+   for(U32 count=0; count < 9; count++){
+      AudioFreqBands.push_back(freq);
+      freq *= 2;
+   }
+}
+FFTObject::~FFTObject(){
+}
+// custom processing for FFT objects
+void FFTObject::process_unique(){
+   //Con::printf("FFTObject::process_unique() - Processing sample data: %d",this->getId());
+
+   
+}
 
 // window functions
 // data = sample
@@ -540,6 +678,41 @@ DefineEngineFunction( stopAudioLoopBack, void, (),,
    }else{
       Con::warnf("startAudioLoopBack: No active audio loopback to stop.");
    }
+}
+/*
+DefineEngineFunction( onProcessAudioLoopBack, void, (),,
+   "Called by the loopback thread or from script to process audio data.\n"
+   "@param No parameters.\n"
+   "@return Nothing.\n"
+   "@ingroup AudioLoopBack" )
+{
+  
+}
+*/
+DefineEngineFunction( addAudioLoopBackObject, void, (SimObject* obj),,
+   "Add LoopBackObject to AudioLoopBack processing.\n"
+   "@param No parameters.\n"
+   "@return Nothing.\n"
+   "@ingroup AudioLoopBack" )
+{   
+   LoopBackObject *tobj = dynamic_cast<LoopBackObject*>(obj);
+   if(tobj)
+      AudioLoopbackThread::addLoopbackObject(tobj);
+   else
+      Con::warnf("addAudioLoopBackObject - Attempt to add non LoopBackObject to AudioLoopBack processing.");
+}
+
+DefineEngineFunction( removeAudioLoopBackObject, void, (SimObject* obj),,
+   "Remove LoopBackObject to AudioLoopBack processing.\n"
+   "@param No parameters.\n"
+   "@return Nothing.\n"
+   "@ingroup AudioLoopBack" )
+{   
+   LoopBackObject *tobj = dynamic_cast<LoopBackObject*>(obj);
+   if(tobj)
+      AudioLoopbackThread::removeLoopbackObject(tobj);
+   else
+      Con::warnf("addAudioLoopBackObject - Attempt to remove non LoopBackObject from AudioLoopBack processing.");
 }
 
 // resources
