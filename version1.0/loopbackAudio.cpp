@@ -625,7 +625,7 @@ IMPLEMENT_CONOBJECT(FFTObject);
 
 FFTObject::FFTObject(){
    // sane defaults
-   U32 freq = 60;
+   U32 freq = 30;
    for(U32 count=0; count < 9; count++){
       AudioFreqBands.push_back(freq);
       freq *= 2;
@@ -692,7 +692,7 @@ void FFTObject::process_unique(){
       }
       if(currentfreqbin > tempFreq){ 
          // divide magnitude of each band by the number of bins that it took to build the band          
-         summing_buffer[bandstep] /= (F32)binsperband;
+         //summing_buffer[bandstep] /= (F32)binsperband; // messes up the response on the high end
          binsperband = 0;      
          bandstep++;
       }
