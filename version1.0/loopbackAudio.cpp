@@ -463,6 +463,7 @@ void AudioLoopbackThread::addLoopbackObject(LoopBackObject* obj){
    loopbackObjects.push_back(obj); 
 
    obj->setExtSampleBuffer(&sampleBufferMutex, &sampleBuffer, &sampleBufferSize, &sampleBufferSamples, &samplesPerSecond);
+   obj->setRemoveFunction(AudioLoopbackThread::removeLoopbackObject);
 }   
 void AudioLoopbackThread::removeLoopbackObject(LoopBackObject* obj){
    MutexHandle mutex;
@@ -470,6 +471,7 @@ void AudioLoopbackThread::removeLoopbackObject(LoopBackObject* obj){
    loopbackObjects.remove(obj);   
 
    obj->clearExtSampleBuffer();
+   obj->setRemoveFunction(NULL);
 }
 
 // static members
@@ -500,18 +502,12 @@ LoopBackObject::LoopBackObject(){
    extSampleBufferSamples = NULL;
    extSamplesPerSecond = NULL;
 
-   /*
-   MutexHandle mutex;
-   mutex.lock( &LoopBackObject::loopbackObjectsMutex, true );
-   LoopBackObject::loopbackObjects.push_back(this);
-   */
+   removeFunc = NULL;  
 }
-LoopBackObject::~LoopBackObject(){
-   /*
-   MutexHandle mutex;
-   mutex.lock( &LoopBackObject::loopbackObjectsMutex, true );
-   LoopBackObject::loopbackObjects.remove(this);   
-   */
+LoopBackObject::~LoopBackObject(){   
+   // call remove function
+   if(removeFunc != NULL)
+      removeFunc(this);   
 
    // acquire mutex before delete
    MutexHandle objectMutex;
@@ -519,25 +515,9 @@ LoopBackObject::~LoopBackObject(){
 
    free(objectSampleBuffer); 
 
+   // this printf will crash the engine is a large number of objects are deleted at once
    //Con::printf("LoopBackObject::~LoopBackObject() - acquired objectSampleBufferMutex mutex.");
 }
-
-/*
-void LoopBackObject::processLoopBack(){ 
-   Vector<LoopBackObject*>::iterator i; 
-
-   MutexHandle mutex;
-   mutex.lock( &loopbackObjectsMutex, true );   
-
-   // if the set exists   
-   for(i = loopbackObjects.begin(); i != loopbackObjects.end(); i++)  
-   {  
-       LoopBackObject *obj = (LoopBackObject *)(*i);  
-         
-       obj->process();
-   }      
-}
-*/
 
 void LoopBackObject::process(){
    //Con::printf("LoopBackObject::process() - Processing audio data: %d",this->getId());
@@ -638,8 +618,7 @@ FFTObject::~FFTObject(){
    MutexHandle mutex;
    mutex.lock( &objectFFTDataMutex, true ); 
 
-   //free(objectFFTBinData);
-
+   // this printf will crash the engine is a large number of objects are deleted at once
    //Con::printf("FFTObject::~FFTObject() - acquired objectFFTDataMutex mutex.");
 }
 // custom processing for FFT 
@@ -880,6 +859,19 @@ DefineEngineFunction( removeAudioLoopBackObject, void, (SimObject* obj),,
    else
       Con::warnf("addAudioLoopBackObject - Attempt to remove non LoopBackObject from AudioLoopBack processing.");
 }
+
+/*
+// can override method, but deletions by groups and other mechanisms will not call this method
+DefineConsoleMethod( LoopBackObject, delete, void, (),,
+   "LoopBackObject: Special Delete and remove the object." )
+{
+   Con::printf("LoopBackObject: Special Delete called.");
+   if(_activeLoopbackThread != NULL){
+      _activeLoopbackThread->removeLoopbackObject(object);
+   }
+   object->deleteObject();
+}
+*/
 
 DefineEngineMethod(FFTObject, setAudioFreqBands, void, (const char* bandfreqstr),,
    "Set FFTObject frequency bands.\n"

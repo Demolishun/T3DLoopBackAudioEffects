@@ -55,6 +55,21 @@ U32 _AudioBandFreqs[AUDIO_FREQ_BANDS]; // internal data
          { (punk)->Release(); (punk) = NULL; }
 
 class LoopBackObject;
+/*
+class SampleObject
+{
+   private:
+      // contol access to buffer and details
+      static Mutex sampleBufferMutex;      
+      // 2 channels in the sample buffer
+      static F32* sampleBuffer;  // should this memory ever be freed?
+      static U32 sampleBufferSize; // total size of buffer divided by 2 (stereo data)
+      static U32 sampleBufferSamples; // total number of samples in buffer
+      static U32 samplesPerSecond;  // used to calculate bin freqs
+
+   
+};
+*/
 
 class AudioLoopbackThread : public Thread
 {
@@ -148,35 +163,31 @@ class LoopBackObject : public SimObject
       /*
       static Mutex loopbackObjectsMutex;
       static Vector<LoopBackObject*> loopbackObjects;
-      */
-
+      */  
+      
+      // external data source buffer
       Mutex* extSampleBufferMutex;
       F32** extSampleBuffer;
       U32* extSampleBufferSize;
       U32* extSampleBufferSamples;
       U32* extSamplesPerSecond; 
  
+      // internal object data
       Mutex objectSampleBufferMutex; 
       F32* objectSampleBuffer;
       U32 objectSampleBufferSize;
       U32 objectSampleBufferSamples;
       U32 objectSamplesPerSecond;
 
-      //F32 objectSampleFilter;
+      // hook to properly remove object from any list it belongs to
+      void (*removeFunc)(LoopBackObject* object);
 
    public:
       LoopBackObject();
-      virtual ~LoopBackObject();
-
-      /*
-      static Vector<LoopBackObject*>* getLoopbackObjects(){
-         return &loopbackObjects;
-      }
-      */
-
-      static void processLoopBack();
+      virtual ~LoopBackObject();      
 
       virtual void setExtSampleBuffer(Mutex* extmut, F32** extbuff, U32* extbuffsize, U32* extbuffsamples, U32* extsamplessecond);
+      void setRemoveFunction(void (*rfunc)(LoopBackObject* object)){removeFunc = rfunc;}
       virtual void clearExtSampleBuffer();
 
       virtual void process();
@@ -193,14 +204,13 @@ class FFTObject : public LoopBackObject
 
    private:
       // protect FFT data in FFTObject
-      Mutex objectFFTDataMutex;
-      //F32* objectFFTBinData;
+      Mutex objectFFTDataMutex;     
       Vector<U32> AudioFreqBands;
       Vector<F32> AudioFreqOutput;      
 
    public:
       FFTObject();
-      virtual ~FFTObject();
+      virtual ~FFTObject();      
    
       // custom processing for FFT 
       virtual void process_unique();

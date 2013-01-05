@@ -78,17 +78,32 @@ function plotAudioLoopBackOutput(){
    %freqsNormalized = trim(%freqsNormalized);
    //echo(%freqsNormalized);
    
-   if(isObject(PESound60)){
-      if(PESound60.orgvel $= ""){
+   if(isObject(Tele60)){
+      
+   }
+   
+   if(isObject(PESound60) && isObject(PESound60Holder) && 0){
+      if(PESound60.orgvel $= ""){         
          PESound60.orgvel = PESound60.velocity;
+         PESound60Holder.orgpos = PESound60Holder.getposition();
       }      
       
-      PESound60.velocity = PESound60.orgvel+getWord(%freqsNormalized,0)*5;
+      %freq60 = getWord(%freqsNormalized,1);
+      PESound60.velocity = PESound60.orgvel+%freq60*5;
       if(%freqsNormalized > 0.25){
          PESound60.setActive(true);
       }else{
          PESound60.setActive(false);
       }
+
+      //echo(PESound60Holder.orgpos);    
+      
+      %x = getWord(PESound60Holder.orgpos,0);
+      %y = getWord(PESound60Holder.orgpos,1);   
+      %z = getWord(PESound60Holder.orgpos,2);
+      //%newpos =          
+      //PESound60Holder.position = %x SPC %y SPC %z+%freq60;
+      //echo(PESound60Holder.position);
    }
    
    slider0.setValue(getWord(%freqsNormalized,0));
@@ -125,6 +140,10 @@ function plotAudioLoopBackOutput(){
 	$ploopbackschedule = schedule(100,0,plotAudioLoopBackOutput);
 }
 
+function PESound60Holder::onAdd(%data, %this){
+   echo(%data SPC %this);
+}
+
 $logo_pos = MainMenuAppLogo.position;
 $play_pos = PlayButton.position;
 $options_pos = OptionsButton.position;
@@ -145,19 +164,31 @@ function startLBAudio(){
       warn("startLBAudio() - Loop Back Audio already running.");
    }
    
-   if(!isObject($FFTGroup)){
-      $FFTGroup = new SimGroup();
+   if(!isObject($LBGroup)){
+      $LBGroup = new SimGroup();
       
-      for(%count=0; %count<10; %count++){
-         %obj = new FFTObject();
-         $FFTGroup.add(%obj);
-         addAudioLoopBackObject(%obj);
+      if(1){
+         for(%count=0; %count<10; %count++){
+            %obj = new FFTObject();
+            $LBGroup.add(%obj);
+            addAudioLoopBackObject(%obj);
+         }
       }
+      
+      // stress test the destructor and removing from object list
+      if(1){
+         for(%count=0; %count<1000; %count++){
+            %obj = new LoopBackObject();
+            $LBGroup.add(%obj);
+            addAudioLoopBackObject(%obj);
+         }
+      }
+      
    }
 }
 
 function stopLBAudio(){   
-   stopAudioLoopBack();
+   //stopAudioLoopBack();
    
    cancel($ploopbackschedule);
    $ploopbackschedule = "";
@@ -166,9 +197,11 @@ function stopLBAudio(){
       $FFTObj.delete();
    }
    
-   if(isObject($FFTGroup)){
-      $FFTGroup.delete();
+   if(isObject($LBGroup)){
+      $LBGroup.delete();
    }
+   
+   //stopAudioLoopBack();
 }
 
 // create loopback plot vars
