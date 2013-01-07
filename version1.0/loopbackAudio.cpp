@@ -640,6 +640,8 @@ void FFTObject::process_unique(){
       objectSampleBuffer[count] = hanningWindow(packed, count, samplesize);         
    }
 
+   // these buffers should be able to grow rather than alloc new and deleting
+   //    todo: make these grow, a max size will be reached and not need to grow bigger
    kiss_fftr_cfg st = kiss_fftr_alloc(samplesize,0,0,0);            
    kiss_fft_cpx* out = (kiss_fft_cpx*)malloc(sizeof(kiss_fft_cpx)*(samplesize/2+1));
    kiss_fftr(st,objectSampleBuffer,(kiss_fft_cpx*)out);  
