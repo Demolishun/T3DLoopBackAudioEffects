@@ -14,6 +14,16 @@
 #include "console/simSet.h"
 #include "materials/matTextureTarget.h"
 
+#ifndef _GFXSTATEBLOCK_H_
+#include "gfx/gfxStateBlock.h"
+#endif
+#ifndef _GFXVERTEXBUFFER_H_
+#include "gfx/gfxVertexBuffer.h"
+#endif
+#ifndef _GFXPRIMITIVEBUFFER_H_
+#include "gfx/gfxPrimitiveBuffer.h"
+#endif
+
 #include <mmsystem.h>
 #include <mmdeviceapi.h>
 #include <dsound.h>
@@ -278,7 +288,22 @@ private:
    // enable rendering texture onto an object in the scene
    //    this will default to false to prevent rendering when used as a texture source for materials
    //    the texture will be mapped to a simple quad
-   bool mEnableRender;   
+   bool mEnableRender;  
+
+   // The name of the Material we will use for rendering
+   String            mMaterialName;
+   // The actual Material instance
+   BaseMatInstance*  mMaterialInst;
+
+   // render variables
+   typedef GFXVertexPCN VertexType;
+
+   // The handles for our StateBlocks
+   GFXStateBlockRef mNormalSB;
+   GFXStateBlockRef mReflectSB;
+
+   // The GFX vertex and primitive buffers
+   GFXVertexBufferHandle< VertexType > mVertexBuffer;
 
 public:
    AudioTextureObject();
@@ -311,7 +336,7 @@ public:
    void prepRenderImage( SceneRenderState *state );
 
    // render the bitmap
-   void render( ObjectRenderInst *ri, SceneRenderState *state, BaseMatInstance *overrideMat );
+   void render( ObjectRenderInst *ri, SceneRenderState *state, BaseMatInstance *overrideMat );   
 
    DECLARE_CONOBJECT(AudioTextureObject);
 };
