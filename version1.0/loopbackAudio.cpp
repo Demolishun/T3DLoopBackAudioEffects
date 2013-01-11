@@ -1206,10 +1206,10 @@ void AudioTextureObject::createGeometry(){
 
 void AudioTextureObject::updateMaterial()
 {
-   Con::warnf("AudioTextureObject::updateMaterial");
+   //Con::warnf("AudioTextureObject::updateMaterial");
 
    // get warning material texture
-   String tmpMatName = "WarningMaterial";
+   //String tmpMatName = "WarningMaterial";
 
    //BaseMatInstance* tmpMat = MATMGR->createMatInstance( tmpMatName, getGFXVertexFormat< VertexType >() );   
    BaseMatInstance* tmpMat = MATMGR->createWarningMatInstance();
@@ -1218,7 +1218,7 @@ void AudioTextureObject::updateMaterial()
       if(tmpTexName){
          mWarningTexture.set(String(tmpTexName),&GFXDefaultStaticDiffuseProfile,"");                                  
          //GFX->setTexture(0, mWarningTexture);
-         Con::warnf("AudioTextureObject::render - setting WarningMaterial texture: %s",tmpTexName);
+         //Con::warnf("AudioTextureObject::render - setting WarningMaterial texture: %s",tmpTexName);
       }      
    }     
    
