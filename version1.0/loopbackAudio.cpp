@@ -6,6 +6,8 @@
 #include "core/stream/bitStream.h"
 #include "scene/sceneRenderState.h"
 #include "materials/sceneData.h"
+#include "materials/materialManager.h"
+#include "materials/baseMatInstance.h"
 #include "gfx/gfxDebugEvent.h"
 #include "gfx/gfxTransformSaver.h"
 #include "renderInstance/renderPassManager.h"
@@ -1002,18 +1004,40 @@ AudioTextureObject::AudioTextureObject(){
    mNetFlags.set( Ghostable | ScopeAlways );
 
    mTypeMask |= StaticObjectType | StaticShapeObjectType;
+
+   mMaterialInst = NULL;   
 }
 AudioTextureObject::~AudioTextureObject(){
+   if ( mMaterialInst )
+      SAFE_DELETE( mMaterialInst );
 }
 
 void AudioTextureObject::initPersistFields(){
+   addGroup( "Rendering" );
+   addField( "material",      TypeMaterialName, Offset( mMaterialName, AudioTextureObject ),
+      "The name of the material used to render the mesh." );
+   endGroup( "Rendering" );
+
    // SceneObject already handles exposing the transform
    Parent::initPersistFields();
+}
+
+void AudioTextureObject::inspectPostApply()
+{
+   Parent::inspectPostApply();
+
+   // Flag the network mask to send the updates
+   // to the client object
+   setMaskBits( UpdateMask );
 }
 
 bool AudioTextureObject::onAdd(){
    if ( !Parent::onAdd() )
       return false;
+
+   // setup material
+   if( isClientObject() )
+      updateMaterial();
 
    // Set up a 1x1x1 bounding box
    mObjBox.set( Point3F( -0.5f, -0.5f, -0.5f ),
@@ -1053,6 +1077,10 @@ U32 AudioTextureObject::packUpdate( NetConnection *conn, U32 mask, BitStream *st
       mathWrite(*stream, getScale());
    }
 
+   // Write out any of the updated editable properties
+   if ( stream->writeFlag( mask & UpdateMask ) )
+      stream->write( mMaterialName );
+
    return retMask;
 }
 
@@ -1066,6 +1094,16 @@ void AudioTextureObject::unpackUpdate( NetConnection *conn, BitStream *stream ){
       mathRead(*stream, &mObjScale);
 
       setTransform( mObjToWorld );
+   }
+
+   if ( stream->readFlag() )  // UpdateMask
+   {
+      stream->read( &mMaterialName );
+
+      if ( isProperlyAdded() )       
+         updateMaterial();
+      //else
+         //Con::errorf("RenderMeshExample::unpackUpdate - not properly added.");
    }
 }
 
@@ -1093,13 +1131,30 @@ void AudioTextureObject::createGeometry(){
       ColorI( 128,   128,   255, 255 ),
    };
 
+   static const Point2F cubeTexCoords[4] = 
+   {
+      Point2F( 0,  0), Point2F( 0, 1),
+      Point2F( 1,  0), Point2F( 1, 1)
+   };
+
+   // for color
+   /*
    static const U32 cubeFaces[12][3] = 
    {
       { 0, 0, 0 }, { 1, 0, 0 }, { 2, 0, 0 },
       { 2, 0, 1 }, { 3, 0, 1 }, { 0, 0, 1 },
       { 2, 1, 2 }, { 1, 1, 2 }, { 0, 1, 2 },
       { 2, 1, 3 }, { 0, 1, 3 }, { 3, 1, 3 },
-   };   
+   };
+   */  
+   // for texture
+   static const U32 cubeFaces[12][3] = 
+   {
+      { 0, 0, 1 }, { 1, 0, 0 }, { 2, 0, 2 },
+      { 2, 0, 2 }, { 3, 0, 3 }, { 0, 0, 1 },
+      { 3, 1, 1 }, { 2, 1, 0 }, { 1, 1, 2 },
+      { 1, 1, 2 }, { 0, 1, 3 }, { 3, 1, 1 },
+   }; 
 
    // Fill the vertex buffer
    VertexType *pVert = NULL;
@@ -1113,17 +1168,32 @@ void AudioTextureObject::createGeometry(){
    {
       const U32& vdx = cubeFaces[i][0];
       const U32& ndx = cubeFaces[i][1];
-      const U32& cdx = cubeFaces[i][2];
+      //const U32& cdx = cubeFaces[i][2];
+      const U32& tdx = cubeFaces[i][2];
 
       pVert[i].point  = cubePoints[vdx] * halfSize;
       pVert[i].normal = cubeNormals[ndx];
-      pVert[i].color  = cubeColors[cdx];
+      //pVert[i].color  = cubeColors[cdx];
+      pVert[i].texCoord  = cubeTexCoords[tdx];
    }
 
    mVertexBuffer.unlock();
 
-   // Set up our normal and reflection StateBlocks
+   // Set up our normal and reflection StateBlocks   
    GFXStateBlockDesc desc;
+   
+   desc.setCullMode( GFXCullCCW );
+   desc.setBlend( true );
+   desc.setZReadWrite( false, false );
+   desc.samplersDefined = true;
+   desc.samplers[0].addressModeU = GFXAddressWrap;
+   desc.samplers[0].addressModeV = GFXAddressWrap;
+   desc.samplers[0].addressModeW = GFXAddressWrap;
+   desc.samplers[0].magFilter = GFXTextureFilterLinear;
+   desc.samplers[0].minFilter = GFXTextureFilterLinear;
+   desc.samplers[0].mipFilter = GFXTextureFilterLinear;
+   desc.samplers[0].textureColorOp = GFXTOPModulate;
+   //desc.samplers[0].textureColorOp = GFXTOPAdd;
 
    // The normal StateBlock only needs a default StateBlock
    mNormalSB = GFX->createStateBlock( desc );
@@ -1134,10 +1204,46 @@ void AudioTextureObject::createGeometry(){
    mReflectSB = GFX->createStateBlock( desc );
 }
 
+void AudioTextureObject::updateMaterial()
+{
+   Con::warnf("AudioTextureObject::updateMaterial");
+
+   // get warning material texture
+   String tmpMatName = "WarningMaterial";
+
+   //BaseMatInstance* tmpMat = MATMGR->createMatInstance( tmpMatName, getGFXVertexFormat< VertexType >() );   
+   BaseMatInstance* tmpMat = MATMGR->createWarningMatInstance();
+   if(tmpMat){
+      const char* tmpTexName = tmpMat->getMaterial()->getDataField(StringTable->insert("diffuseMap"),"0");
+      if(tmpTexName){
+         mWarningTexture.set(String(tmpTexName),&GFXDefaultStaticDiffuseProfile,"");                                  
+         //GFX->setTexture(0, mWarningTexture);
+         Con::warnf("AudioTextureObject::render - setting WarningMaterial texture: %s",tmpTexName);
+      }      
+   }     
+   
+   // get rid of temp material
+   if(tmpMat)
+      SAFE_DELETE( tmpMat );
+
+   if( mMaterialName.isEmpty() )
+      return;
+
+   // If the material name matches then don't bother updating it.
+   if ( mMaterialInst && mMaterialName.equal( mMaterialInst->getMaterial()->getName(), String::NoCase ) )
+      return;
+
+   SAFE_DELETE( mMaterialInst );
+
+   mMaterialInst = MATMGR->createMatInstance( mMaterialName, getGFXVertexFormat< VertexType >() );
+   if ( !mMaterialInst )
+      Con::errorf( "RenderMeshExample::updateMaterial - no Material called '%s'", mMaterialName.c_str() );   
+}
+
 void AudioTextureObject::prepRenderImage( SceneRenderState *state ){
    // Do a little prep work if needed
    if ( mVertexBuffer.isNull() )
-      createGeometry();
+      createGeometry();   
 
    // Allocate an ObjectRenderInst so that we can submit it to the RenderPassManager
    ObjectRenderInst *ri = state->getRenderPass()->allocInst<ObjectRenderInst>();
@@ -1164,7 +1270,7 @@ void AudioTextureObject::render( ObjectRenderInst *ri, SceneRenderState *state, 
       return;
 
    if(!gEditingMission)
-      return;
+      return;   
 
    PROFILE_SCOPE(AudioTextureObject_Render);
 
@@ -1186,18 +1292,29 @@ void AudioTextureObject::render( ObjectRenderInst *ri, SceneRenderState *state, 
    // Deal with reflect pass otherwise
    // set the normal StateBlock
    if ( state->isReflectPass() )
-      GFX->setStateBlock( mReflectSB );
-   else
-      GFX->setStateBlock( mNormalSB );
+      GFX->setStateBlock( mReflectSB );      
+   else      
+      GFX->setStateBlock( mNormalSB );   
 
    // Set up the "generic" shaders
    // These handle rendering on GFX layers that don't support
    // fixed function. Otherwise they disable shaders.
-   GFX->setupGenericShaders( GFXDevice::GSModColorTexture );
+   //GFX->setupGenericShaders( GFXDevice::GSModColorTexture );
+   //GFX->setupGenericShaders( GFXDevice::GSTexture );
 
    // Set the vertex buffer
    GFX->setVertexBuffer( mVertexBuffer );
 
+   // set texture 
+   if ( mMaterialName.isEmpty() || !mMaterialInst){      
+      GFX->setTexture(0, mWarningTexture);      
+   }else{
+          
+   }
+
+   // define shader type
+   GFX->setupGenericShaders( GFXDevice::GSModColorTexture );
+
    // Draw our triangles
-   GFX->drawPrimitive( GFXTriangleList, 0, 4 );
+   GFX->drawPrimitive( GFXTriangleList, 0, 4 );   
 }

@@ -31,6 +31,8 @@
 #include <Audiopolicy.h>
 #include <Mmreg.h>
 
+class BaseMatInstance;
+
 #define AUDIO_FREQ_BANDS 9
 #define AUDIO_FFT_BINS 256
 #define AUDIO_DATA_GAIN 1.0f
@@ -269,13 +271,15 @@ private:
    enum MaskBits 
    {
       TransformMask = Parent::NextFreeMask << 0,
-      NextFreeMask  = Parent::NextFreeMask << 1
+      UpdateMask    = Parent::NextFreeMask << 1,
+      NextFreeMask  = Parent::NextFreeMask << 2
    };
 
    // buffers and pointers to texture
    //    texture writing is double buffered
    GFXTexHandle   mTextureBuffer1;
    GFXTexHandle   mTextureBuffer2;
+   GFXTexHandle   mWarningTexture;
    GFXTextureObject* mTexture;
 
    // The size in pixels of the backing texture
@@ -296,7 +300,8 @@ private:
    BaseMatInstance*  mMaterialInst;
 
    // render variables
-   typedef GFXVertexPCN VertexType;
+   //typedef GFXVertexPCN VertexType;
+   typedef GFXVertexPNT VertexType;
 
    // The handles for our StateBlocks
    GFXStateBlockRef mNormalSB;
@@ -304,6 +309,7 @@ private:
 
    // The GFX vertex and primitive buffers
    GFXVertexBufferHandle< VertexType > mVertexBuffer;
+   //GFXPrimitiveBufferHandle            mPrimitiveBuffer;
 
 public:
    AudioTextureObject();
@@ -313,6 +319,10 @@ public:
    GFXTextureObject* getTexture(){
       return mTexture;
    };
+
+   // Allows the object to update its editable settings
+   // from the server object to the client
+   virtual void inspectPostApply();
 
    // Set up any fields that we want to be editable (like position or render enable)
    static void initPersistFields();
@@ -331,6 +341,8 @@ public:
    // Create the geometry for rendering
    //    would used for debug only
    void createGeometry();
+
+   void updateMaterial();
 
    // This is the function that allows this object to submit itself for rendering
    void prepRenderImage( SceneRenderState *state );
