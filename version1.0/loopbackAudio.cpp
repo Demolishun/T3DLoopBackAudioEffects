@@ -1036,8 +1036,9 @@ bool AudioTextureObject::onAdd(){
       return false;
 
    // setup material
-   if( isClientObject() )
+   if( isClientObject() ){
       updateMaterial();
+   }
 
    // Set up a 1x1x1 bounding box
    mObjBox.set( Point3F( -0.5f, -0.5f, -0.5f ),
@@ -1181,7 +1182,7 @@ void AudioTextureObject::createGeometry(){
 
    // Set up our normal and reflection StateBlocks   
    GFXStateBlockDesc desc;
-   
+   /*
    desc.setCullMode( GFXCullCCW );
    desc.setBlend( true );
    desc.setZReadWrite( false, false );
@@ -1194,6 +1195,9 @@ void AudioTextureObject::createGeometry(){
    desc.samplers[0].mipFilter = GFXTextureFilterLinear;
    desc.samplers[0].textureColorOp = GFXTOPModulate;
    //desc.samplers[0].textureColorOp = GFXTOPAdd;
+   */
+
+   desc.samplers[0].textureColorOp = GFXTOPModulate;      
 
    // The normal StateBlock only needs a default StateBlock
    mNormalSB = GFX->createStateBlock( desc );
@@ -1317,4 +1321,10 @@ void AudioTextureObject::render( ObjectRenderInst *ri, SceneRenderState *state, 
 
    // Draw our triangles
    GFX->drawPrimitive( GFXTriangleList, 0, 4 );   
+}
+
+DefineEngineMethod( AudioTextureObject, postApply, void, (),,
+   "A utility method for forcing a network update.\n")
+{
+	object->inspectPostApply();
 }
