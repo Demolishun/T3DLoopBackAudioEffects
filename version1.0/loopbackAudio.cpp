@@ -1015,7 +1015,9 @@ AudioTextureObject::~AudioTextureObject(){
 void AudioTextureObject::initPersistFields(){
    addGroup( "Rendering" );
    addField( "material",      TypeMaterialName, Offset( mMaterialName, AudioTextureObject ),
-      "The name of the material used to render the mesh." );
+      "" );
+   addField( "texture",      TypeRealString, Offset( mTextureName, AudioTextureObject ),
+      "The target render texture." );
    endGroup( "Rendering" );
 
    // SceneObject already handles exposing the transform
@@ -1223,12 +1225,11 @@ void AudioTextureObject::updateMaterial()
          mWarningTexture.set(String(tmpTexName),&GFXDefaultStaticDiffuseProfile,"");                                  
          //GFX->setTexture(0, mWarningTexture);
          //Con::warnf("AudioTextureObject::render - setting WarningMaterial texture: %s",tmpTexName);
-      }      
-   }     
-   
-   // get rid of temp material
-   if(tmpMat)
+      }  
+ 
+      // get rid of temp material instance
       SAFE_DELETE( tmpMat );
+   }        
 
    if( mMaterialName.isEmpty() )
       return;
@@ -1241,7 +1242,10 @@ void AudioTextureObject::updateMaterial()
 
    mMaterialInst = MATMGR->createMatInstance( mMaterialName, getGFXVertexFormat< VertexType >() );
    if ( !mMaterialInst )
-      Con::errorf( "RenderMeshExample::updateMaterial - no Material called '%s'", mMaterialName.c_str() );   
+      Con::errorf( "AudioTextureObject::updateMaterial - no Material called '%s'", mMaterialName.c_str() );   
+
+   mTextureName = mMaterialInst->getMaterial()->getDataField(StringTable->insert("diffuseMap"),"0");   
+   //Con::warnf("AudioTextureObject::updateMaterial - Texture name '%s'",mTextureName.c_str());
 }
 
 void AudioTextureObject::prepRenderImage( SceneRenderState *state ){
