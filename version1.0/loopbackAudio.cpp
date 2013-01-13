@@ -10,6 +10,7 @@
 #include "materials/baseMatInstance.h"
 #include "gfx/gfxDebugEvent.h"
 #include "gfx/gfxTransformSaver.h"
+#include "gfx/bitmap/gBitmap.h"
 #include "renderInstance/renderPassManager.h"
 
 #include "gfx/gfxDebugEvent.h"
@@ -1006,6 +1007,9 @@ AudioTextureObject::AudioTextureObject(){
    mTypeMask |= StaticObjectType | StaticShapeObjectType;
 
    mTextureTarget = NULL;   
+   mTexSize = 512;
+
+   mBitmap = NULL;   
 }
 AudioTextureObject::~AudioTextureObject(){   
 }
@@ -1057,10 +1061,12 @@ void AudioTextureObject::onRemove(){
 
    if(mWarningTexture)
       SAFE_DELETE(mWarningTexture);
-   if(mTextureTarget){
-      mTextureTarget->unregister();
+   if(mTextureTarget){      
       SAFE_DELETE(mTextureTarget);      
    }
+   if(mBitmap){
+      SAFE_DELETE(mBitmap);
+   }  
 
    Parent::onRemove();
 }
@@ -1222,7 +1228,7 @@ void AudioTextureObject::updateMaterial()
          const char* tmpTexName = tmpMat->getMaterial()->getDataField(StringTable->insert("diffuseMap"),"0");
          if(tmpTexName){
             mWarningTexture.set(String(tmpTexName),&GFXDefaultStaticDiffuseProfile,"");                                              
-            //Con::warnf("AudioTextureObject::render - setting WarningMaterial texture: %s",tmpTexName);
+            //Con::warnf("AudioTextureObject::updateMaterial - setting WarningMaterial texture: %s",tmpTexName);
          }  
     
          // get rid of temp material instance
@@ -1233,14 +1239,30 @@ void AudioTextureObject::updateMaterial()
    if(mTextureName.isNotEmpty()){
       if(!mTextureTarget){
          // create texture target object with the pointer to this object
-         mTextureTarget = new AudioTextureMap(this);
+         mTextureTarget = new NamedTexTarget();
          if(!mTextureTarget)
             Con::errorf("AudioTextureObject::updateMaterial - could not allocate memory for new texture target.");
       }      
-      if(mTextureTarget && !mTextureName.equal( mTextureTarget->getName(), String::NoCase )){                  
+      // if we have a texture target and the name is not the same as what is already set on the target
+      if(mTextureTarget && !mTextureName.equal( mTextureTarget->getName(), String::NoCase )){         
+         // check to see if the name is already registered         
          if(!mTextureTarget->registerWithName(mTextureName)){
             Con::errorf("AudioTextureObject::updateMaterial - could not register texture target name (%s).  The target name may already be in use.",mTextureName.c_str());
             SAFE_DELETE(mTextureTarget);
+         }else{
+            // allocate space for texture
+            //mTextureBuffer.set(mTexSize, mTexSize, GFXFormatR8G8B8X8, &GFXDefaultStaticDiffuseProfile, "", 0);                        
+            //mTextureBuffer.set(mTexSize, mTexSize, GFXFormatR8G8B8X8, &GFXDefaultPersistentProfile, "", 0); 
+            if(mBitmap){
+               SAFE_DELETE(mBitmap);
+            }
+            mBitmap = new GBitmap(mTexSize, mTexSize, false, GFXFormatR8G8B8X8); 
+            mBitmap->fill(ColorI(0,0,255));          
+            mTextureBuffer.set(mBitmap, &GFXDefaultPersistentProfile, false, String(""));            
+
+            // set the texture 
+            mTextureTarget->setTexture(mTextureBuffer.getPointer());
+            Con::warnf("AudioTextureObject::updateMaterial - setting texture to texture target: %s",mTextureName.c_str());
          }         
       }
    }else{
@@ -1268,9 +1290,27 @@ void AudioTextureObject::updateMaterial()
 }
 
 void AudioTextureObject::prepRenderImage( SceneRenderState *state ){
+   //Con::warnf("AudioTextureObject::prepRenderImage - called");
+
    // Do a little prep work if needed
    if ( mVertexBuffer.isNull() )
-      createGeometry();   
+      createGeometry();
+
+   // Perform drawing on texture here
+   if(mTextureTarget){
+      GFXTextureObject* tmpTexture = mTextureTarget->getTexture();
+      GBitmap* tmpBitmap = tmpTexture->getBitmap();
+      U32 w = tmpBitmap->getWidth();
+      U32 h = tmpBitmap->getHeight();
+      
+      tmpBitmap->fill(ColorI(0,255,0));
+      tmpBitmap->setColor(w/2, h/2, ColorI(255,128,128));
+   }
+
+   // only display textured object when in the editor
+   //    if the render request is not submitted to the render pass then ::render is not called
+   if(!gEditingMission)
+      return; 
 
    // Allocate an ObjectRenderInst so that we can submit it to the RenderPassManager
    ObjectRenderInst *ri = state->getRenderPass()->allocInst<ObjectRenderInst>();
@@ -1290,14 +1330,13 @@ void AudioTextureObject::prepRenderImage( SceneRenderState *state ){
 }
 
 void AudioTextureObject::render( ObjectRenderInst *ri, SceneRenderState *state, BaseMatInstance *overrideMat ){
+   //Con::warnf("AudioTextureObject::render - called");
+
    if ( overrideMat )
       return;
 
    if ( mVertexBuffer.isNull() )
-      return;
-
-   if(!gEditingMission)
-      return;   
+      return;     
 
    PROFILE_SCOPE(AudioTextureObject_Render);
 

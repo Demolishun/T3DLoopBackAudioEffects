@@ -279,6 +279,7 @@ private:
 
    // buffers and pointers to texture
    //    texture writing is double buffered
+   GBitmap* mBitmap;
    GFXTexHandle   mTextureBuffer; 
    GFXTexHandle   mWarningTexture;
    //GFXTextureObject* mTexture; // 
@@ -291,7 +292,7 @@ private:
    String mTextureName;  
 
    // texture target reg object
-   AudioTextureMap* mTextureTarget; 
+   NamedTexTarget* mTextureTarget; 
 
    // enable rendering texture onto an object in the scene
    //    this will default to false to prevent rendering when used as a texture source for materials
