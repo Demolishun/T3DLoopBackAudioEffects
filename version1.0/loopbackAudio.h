@@ -262,6 +262,8 @@ inline F32 hanningWindow(F32 data, U32 i, U32 s);
 //    used to "smooth" the data
 inline F32 lowPassFilter(F32 input, F32 last, F32 filter);
 
+class AudioTextureMap;
+
 // Object that can display sampled data on a texture
 class AudioTextureObject : public SceneObject
 {
@@ -277,17 +279,19 @@ private:
 
    // buffers and pointers to texture
    //    texture writing is double buffered
-   GFXTexHandle   mTextureBuffer1;
-   GFXTexHandle   mTextureBuffer2;
+   GFXTexHandle   mTextureBuffer; 
    GFXTexHandle   mWarningTexture;
-   GFXTextureObject* mTexture;
+   //GFXTextureObject* mTexture; // 
 
    // The size in pixels of the backing texture
    S32 mTexSize;
 
    // texture reference name for use in materials
    //    eg: diffuseMap[0] = "#MyWebTexture";
-   String mTextureName;   
+   String mTextureName;  
+
+   // texture target reg object
+   AudioTextureMap* mTextureTarget; 
 
    // enable rendering texture onto an object in the scene
    //    this will default to false to prevent rendering when used as a texture source for materials
@@ -295,9 +299,9 @@ private:
    bool mEnableRender;  
 
    // The name of the Material we will use for rendering
-   String            mMaterialName;
+   //String            mMaterialName;
    // The actual Material instance
-   BaseMatInstance*  mMaterialInst;
+   //aseMatInstance*  mMaterialInst;
 
    // render variables
    //typedef GFXVertexPCN VertexType;
@@ -317,7 +321,7 @@ public:
    
    // get the current texture handle
    GFXTextureObject* getTexture(){
-      return mTexture;
+      return mTextureBuffer.getPointer();
    };
 
    // Allows the object to update its editable settings

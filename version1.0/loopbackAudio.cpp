@@ -1005,17 +1005,15 @@ AudioTextureObject::AudioTextureObject(){
 
    mTypeMask |= StaticObjectType | StaticShapeObjectType;
 
-   mMaterialInst = NULL;   
+   mTextureTarget = NULL;   
 }
-AudioTextureObject::~AudioTextureObject(){
-   if ( mMaterialInst )
-      SAFE_DELETE( mMaterialInst );
+AudioTextureObject::~AudioTextureObject(){   
 }
 
 void AudioTextureObject::initPersistFields(){
    addGroup( "Rendering" );
-   addField( "material",      TypeMaterialName, Offset( mMaterialName, AudioTextureObject ),
-      "" );
+   /*addField( "material",      TypeMaterialName, Offset( mMaterialName, AudioTextureObject ),
+      "" );*/
    addField( "texture",      TypeRealString, Offset( mTextureName, AudioTextureObject ),
       "The target render texture." );
    endGroup( "Rendering" );
@@ -1057,6 +1055,13 @@ void AudioTextureObject::onRemove(){
    // Remove this object from the scene
    removeFromScene();
 
+   if(mWarningTexture)
+      SAFE_DELETE(mWarningTexture);
+   if(mTextureTarget){
+      mTextureTarget->unregister();
+      SAFE_DELETE(mTextureTarget);      
+   }
+
    Parent::onRemove();
 }
 
@@ -1082,7 +1087,7 @@ U32 AudioTextureObject::packUpdate( NetConnection *conn, U32 mask, BitStream *st
 
    // Write out any of the updated editable properties
    if ( stream->writeFlag( mask & UpdateMask ) )
-      stream->write( mMaterialName );
+      stream->write( mTextureName );
 
    return retMask;
 }
@@ -1101,12 +1106,10 @@ void AudioTextureObject::unpackUpdate( NetConnection *conn, BitStream *stream ){
 
    if ( stream->readFlag() )  // UpdateMask
    {
-      stream->read( &mMaterialName );
+      stream->read( &mTextureName );
 
       if ( isProperlyAdded() )       
-         updateMaterial();
-      //else
-         //Con::errorf("RenderMeshExample::unpackUpdate - not properly added.");
+         updateMaterial();      
    }
 }
 
@@ -1211,26 +1214,41 @@ void AudioTextureObject::createGeometry(){
 }
 
 void AudioTextureObject::updateMaterial()
-{
-   //Con::warnf("AudioTextureObject::updateMaterial");
-
-   // get warning material texture
-   //String tmpMatName = "WarningMaterial";
-
+{   
    //BaseMatInstance* tmpMat = MATMGR->createMatInstance( tmpMatName, getGFXVertexFormat< VertexType >() );   
-   BaseMatInstance* tmpMat = MATMGR->createWarningMatInstance();
-   if(tmpMat){
-      const char* tmpTexName = tmpMat->getMaterial()->getDataField(StringTable->insert("diffuseMap"),"0");
-      if(tmpTexName){
-         mWarningTexture.set(String(tmpTexName),&GFXDefaultStaticDiffuseProfile,"");                                  
-         //GFX->setTexture(0, mWarningTexture);
-         //Con::warnf("AudioTextureObject::render - setting WarningMaterial texture: %s",tmpTexName);
-      }  
- 
-      // get rid of temp material instance
-      SAFE_DELETE( tmpMat );
-   }        
+   if(mWarningTexture.isNull()){
+      BaseMatInstance* tmpMat = MATMGR->createWarningMatInstance();
+      if(tmpMat){
+         const char* tmpTexName = tmpMat->getMaterial()->getDataField(StringTable->insert("diffuseMap"),"0");
+         if(tmpTexName){
+            mWarningTexture.set(String(tmpTexName),&GFXDefaultStaticDiffuseProfile,"");                                              
+            //Con::warnf("AudioTextureObject::render - setting WarningMaterial texture: %s",tmpTexName);
+         }  
+    
+         // get rid of temp material instance
+         SAFE_DELETE( tmpMat );
+      }
+   } 
 
+   if(mTextureName.isNotEmpty()){
+      if(!mTextureTarget){
+         // create texture target object with the pointer to this object
+         mTextureTarget = new AudioTextureMap(this);
+         if(!mTextureTarget)
+            Con::errorf("AudioTextureObject::updateMaterial - could not allocate memory for new texture target.");
+      }      
+      if(mTextureTarget && !mTextureName.equal( mTextureTarget->getName(), String::NoCase )){                  
+         if(!mTextureTarget->registerWithName(mTextureName)){
+            Con::errorf("AudioTextureObject::updateMaterial - could not register texture target name (%s).  The target name may already be in use.",mTextureName.c_str());
+            SAFE_DELETE(mTextureTarget);
+         }         
+      }
+   }else{
+      if(mTextureTarget)
+         SAFE_DELETE(mTextureTarget);
+   }       
+
+   /*
    if( mMaterialName.isEmpty() )
       return;
 
@@ -1246,6 +1264,7 @@ void AudioTextureObject::updateMaterial()
 
    mTextureName = mMaterialInst->getMaterial()->getDataField(StringTable->insert("diffuseMap"),"0");   
    //Con::warnf("AudioTextureObject::updateMaterial - Texture name '%s'",mTextureName.c_str());
+   */
 }
 
 void AudioTextureObject::prepRenderImage( SceneRenderState *state ){
@@ -1314,10 +1333,10 @@ void AudioTextureObject::render( ObjectRenderInst *ri, SceneRenderState *state, 
    GFX->setVertexBuffer( mVertexBuffer );
 
    // set texture 
-   if ( mMaterialName.isEmpty() || !mMaterialInst){      
+   if (!mTextureTarget){      
       GFX->setTexture(0, mWarningTexture);      
    }else{
-          
+      GFX->setTexture(0, mTextureBuffer.getPointer());
    }
 
    // define shader type
