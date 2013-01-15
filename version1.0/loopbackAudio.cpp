@@ -1316,51 +1316,13 @@ void AudioTextureObject::prepRenderImage( SceneRenderState *state ){
 
    // Do a little prep work if needed
    if ( mVertexBuffer.isNull() )
-      createGeometry();
-
-   // Perform drawing on texture here
-   if(mTextureTarget){
-      // setup target texture
-      if(mGFXTextureTarget.isNull()){
-         mGFXTextureTarget = GFX->allocRenderToTextureTarget();        
-         mGFXTextureTarget->attachTexture(GFXTextureTarget::RenderSlot(0),mTextureTarget->getTexture());
-      }      
-
-      /*
-      GFXTextureObject* tmpTexture = mTextureTarget->getTexture();
-      tmpTexture->lock();
-      GBitmap* tmpBitmap = tmpTexture->getBitmap();
-      U32 w = tmpBitmap->getWidth();
-      U32 h = tmpBitmap->getHeight();
-      
-      tmpBitmap->fill(ColorI(0,255,0));
-      tmpBitmap->setColor(w/2, h/2, ColorI(255,128,128));      
-      
-      tmpTexture->unlock();
-      */
-      
-      /*
-      mTexture = mTextureTarget->getTexture();      
-      mTexture->lock();    
-      mTexture->unlock();
-      */
-      
-      //mTexture->
-
-      // swap textures
-      /*
-      if(mTextureTarget->getTexture() == mTextureBuffer1.getPointer()){
-         mTextureTarget->setTexture(mTextureBuffer2.getPointer());  
-      }else{
-         mTextureTarget->setTexture(mTextureBuffer1.getPointer());
-      }
-      */
-   }
+      createGeometry();   
 
    // only display textured object when in the editor
    //    if the render request is not submitted to the render pass then ::render is not called
-   if(!gEditingMission)
-      return; 
+   if(!gEditingMission){
+      //return; 
+   }
 
    // Allocate an ObjectRenderInst so that we can submit it to the RenderPassManager
    ObjectRenderInst *ri = state->getRenderPass()->allocInst<ObjectRenderInst>();
@@ -1396,7 +1358,7 @@ void AudioTextureObject::render( ObjectRenderInst *ri, SceneRenderState *state, 
    // GFXTransformSaver is a handy helper class that restores
    // the current GFX matrices to their original values when
    // it goes out of scope at the end of the function
-   GFXTransformSaver saver;
+   GFXTransformSaver saver;   
 
    // Calculate our object to world transform matrix
    MatrixF objectToWorld = getRenderTransform();
@@ -1404,6 +1366,26 @@ void AudioTextureObject::render( ObjectRenderInst *ri, SceneRenderState *state, 
 
    // Apply our object transform
    GFX->multWorld( objectToWorld );
+
+   // render to texture
+   if(mTextureTarget){      
+      mGFXTextureTarget = GFX->allocRenderToTextureTarget();        
+      mGFXTextureTarget->attachTexture(GFXTextureTarget::RenderSlot::Color0,mTextureTarget->getTexture());      
+
+      GFX->pushActiveRenderTarget();      
+      GFX->setActiveRenderTarget(mGFXTextureTarget);
+
+      GFX->clear(GFXClearTarget,ColorI(0,0,0),1.0f,0);
+      GFX->setStateBlock( mNormalSB );
+      GFX->setVertexBuffer( mVertexBuffer );
+      GFX->setTexture(0, mWarningTexture);
+      GFX->setupGenericShaders( GFXDevice::GSModColorTexture );
+      GFX->drawPrimitive( GFXTriangleList, 0, 4 );
+
+      mGFXTextureTarget->resolve();
+            
+      GFX->popActiveRenderTarget();
+   }
 
    //GFX->allocRenderToTextureTarget();
 
