@@ -14,15 +14,11 @@
 #include "console/simSet.h"
 #include "materials/matTextureTarget.h"
 
-#ifndef _GFXSTATEBLOCK_H_
+
 #include "gfx/gfxStateBlock.h"
-#endif
-#ifndef _GFXVERTEXBUFFER_H_
 #include "gfx/gfxVertexBuffer.h"
-#endif
-#ifndef _GFXPRIMITIVEBUFFER_H_
 #include "gfx/gfxPrimitiveBuffer.h"
-#endif
+#include "gfx/gfxTarget.h"
 
 #include <mmsystem.h>
 #include <mmdeviceapi.h>
@@ -279,10 +275,10 @@ private:
 
    // buffers and pointers to texture
    //    texture writing is double buffered
-   GBitmap* mBitmap;
-   GFXTexHandle   mTextureBuffer; 
+   GFXTexHandle   mTextureBuffer1; 
+   GFXTexHandle   mTextureBuffer2;
    GFXTexHandle   mWarningTexture;
-   //GFXTextureObject* mTexture; // 
+   GFXTextureObject* mTexture; // 
 
    // The size in pixels of the backing texture
    S32 mTexSize;
@@ -293,6 +289,8 @@ private:
 
    // texture target reg object
    NamedTexTarget* mTextureTarget; 
+
+   GFXTextureTargetRef mGFXTextureTarget;
 
    // enable rendering texture onto an object in the scene
    //    this will default to false to prevent rendering when used as a texture source for materials
@@ -322,7 +320,7 @@ public:
    
    // get the current texture handle
    GFXTextureObject* getTexture(){
-      return mTextureBuffer.getPointer();
+      return mTexture;
    };
 
    // Allows the object to update its editable settings

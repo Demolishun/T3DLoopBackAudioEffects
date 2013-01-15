@@ -10,7 +10,7 @@
 #include "materials/baseMatInstance.h"
 #include "gfx/gfxDebugEvent.h"
 #include "gfx/gfxTransformSaver.h"
-#include "gfx/bitmap/gBitmap.h"
+//#include "gfx/bitmap/gBitmap.h"
 #include "renderInstance/renderPassManager.h"
 
 #include "gfx/gfxDebugEvent.h"
@@ -1009,7 +1009,7 @@ AudioTextureObject::AudioTextureObject(){
    mTextureTarget = NULL;   
    mTexSize = 512;
 
-   mBitmap = NULL;   
+   mTexture = NULL; 
 }
 AudioTextureObject::~AudioTextureObject(){   
 }
@@ -1063,10 +1063,7 @@ void AudioTextureObject::onRemove(){
       SAFE_DELETE(mWarningTexture);
    if(mTextureTarget){      
       SAFE_DELETE(mTextureTarget);      
-   }
-   if(mBitmap){
-      SAFE_DELETE(mBitmap);
-   }  
+   }   
 
    Parent::onRemove();
 }
@@ -1172,6 +1169,7 @@ void AudioTextureObject::createGeometry(){
    VertexType *pVert = NULL;
    
    mVertexBuffer.set( GFX, numPoints, GFXBufferTypeStatic );
+   //mVertexBuffer.set( GFX, numPoints, GFXBufferTypeDynamic );
    pVert = mVertexBuffer.lock();
 
    Point3F halfSize = getObjBox().getExtents() * 0.5f;
@@ -1208,7 +1206,29 @@ void AudioTextureObject::createGeometry(){
    //desc.samplers[0].textureColorOp = GFXTOPAdd;
    */
 
-   desc.samplers[0].textureColorOp = GFXTOPModulate;      
+   //desc.samplers[0].textureColorOp = GFXTOPModulate;  
+
+   // DrawBitmapStretchSR   
+   desc.setCullMode(GFXCullCCW);
+   desc.setZReadWrite(false);
+   desc.setBlend(true, GFXBlendSrcAlpha, GFXBlendInvSrcAlpha);
+   desc.samplersDefined = true;
+
+   // Linear: Create wrap SB
+   desc.samplers[0] = GFXSamplerStateDesc::getWrapLinear();
+   //mBitmapStretchWrapLinearSB = mDevice->createStateBlock(bitmapStretchSR);
+
+   // Linear: Create clamp SB
+   desc.samplers[0] = GFXSamplerStateDesc::getClampLinear();
+   //mBitmapStretchLinearSB = mDevice->createStateBlock(bitmapStretchSR);
+
+   // Point:
+   desc.samplers[0].minFilter = GFXTextureFilterPoint;
+   desc.samplers[0].mipFilter = GFXTextureFilterPoint;
+   desc.samplers[0].magFilter = GFXTextureFilterPoint;
+
+   // Point: Create clamp SB, last created clamped so no work required here
+   //mBitmapStretchSB = mDevice->createStateBlock(bitmapStretchSR);    
 
    // The normal StateBlock only needs a default StateBlock
    mNormalSB = GFX->createStateBlock( desc );
@@ -1216,7 +1236,7 @@ void AudioTextureObject::createGeometry(){
    // The reflection needs its culling reversed
    desc.cullDefined = true;
    desc.cullMode = GFXCullCW;
-   mReflectSB = GFX->createStateBlock( desc );
+   mReflectSB = GFX->createStateBlock( desc );   
 }
 
 void AudioTextureObject::updateMaterial()
@@ -1234,7 +1254,7 @@ void AudioTextureObject::updateMaterial()
          // get rid of temp material instance
          SAFE_DELETE( tmpMat );
       }
-   } 
+   }    
 
    if(mTextureName.isNotEmpty()){
       if(!mTextureTarget){
@@ -1251,18 +1271,20 @@ void AudioTextureObject::updateMaterial()
             SAFE_DELETE(mTextureTarget);
          }else{
             // allocate space for texture
-            //mTextureBuffer.set(mTexSize, mTexSize, GFXFormatR8G8B8X8, &GFXDefaultStaticDiffuseProfile, "", 0);                        
-            //mTextureBuffer.set(mTexSize, mTexSize, GFXFormatR8G8B8X8, &GFXDefaultPersistentProfile, "", 0); 
-            if(mBitmap){
-               SAFE_DELETE(mBitmap);
-            }
-            mBitmap = new GBitmap(mTexSize, mTexSize, false, GFXFormatR8G8B8X8); 
-            mBitmap->fill(ColorI(0,0,255));          
-            mTextureBuffer.set(mBitmap, &GFXDefaultPersistentProfile, false, String(""));            
+            mTextureBuffer1.set(mTexSize, mTexSize, GFXFormatR8G8B8X8, &GFXDefaultRenderTargetProfile, "", 0);                        
+            //mTextureBuffer2.set(mTexSize, mTexSize, GFXFormatR8G8B8X8, &GFXDefaultRenderTargetProfile, "", 0); 
+            //GFXTextureObject* tmptex = mTextureBuffer1.getPointer();
+            
+                   
+            //mTextureBuffer1.set(mBitmap, &GFXDefaultPersistentProfile, false, String(""));            
+            //mTextureBuffer2.set(mBitmap, &GFXDefaultPersistentProfile, false, String(""));
 
             // set the texture 
-            mTextureTarget->setTexture(mTextureBuffer.getPointer());
+            mTextureTarget->setTexture(mTextureBuffer1.getPointer());
             Con::warnf("AudioTextureObject::updateMaterial - setting texture to texture target: %s",mTextureName.c_str());
+
+            // 
+            mTexture = mTextureBuffer1.getPointer();
          }         
       }
    }else{
@@ -1298,13 +1320,41 @@ void AudioTextureObject::prepRenderImage( SceneRenderState *state ){
 
    // Perform drawing on texture here
    if(mTextureTarget){
+      // setup target texture
+      if(mGFXTextureTarget.isNull()){
+         mGFXTextureTarget = GFX->allocRenderToTextureTarget();        
+         mGFXTextureTarget->attachTexture(GFXTextureTarget::RenderSlot(0),mTextureTarget->getTexture());
+      }      
+
+      /*
       GFXTextureObject* tmpTexture = mTextureTarget->getTexture();
+      tmpTexture->lock();
       GBitmap* tmpBitmap = tmpTexture->getBitmap();
       U32 w = tmpBitmap->getWidth();
       U32 h = tmpBitmap->getHeight();
       
       tmpBitmap->fill(ColorI(0,255,0));
-      tmpBitmap->setColor(w/2, h/2, ColorI(255,128,128));
+      tmpBitmap->setColor(w/2, h/2, ColorI(255,128,128));      
+      
+      tmpTexture->unlock();
+      */
+      
+      /*
+      mTexture = mTextureTarget->getTexture();      
+      mTexture->lock();    
+      mTexture->unlock();
+      */
+      
+      //mTexture->
+
+      // swap textures
+      /*
+      if(mTextureTarget->getTexture() == mTextureBuffer1.getPointer()){
+         mTextureTarget->setTexture(mTextureBuffer2.getPointer());  
+      }else{
+         mTextureTarget->setTexture(mTextureBuffer1.getPointer());
+      }
+      */
    }
 
    // only display textured object when in the editor
@@ -1326,7 +1376,7 @@ void AudioTextureObject::prepRenderImage( SceneRenderState *state ){
    ri->defaultKey2 = 0;
 
    // Submit our RenderInst to the RenderPassManager
-   state->getRenderPass()->addInst( ri );
+   state->getRenderPass()->addInst( ri );   
 }
 
 void AudioTextureObject::render( ObjectRenderInst *ri, SceneRenderState *state, BaseMatInstance *overrideMat ){
@@ -1355,11 +1405,13 @@ void AudioTextureObject::render( ObjectRenderInst *ri, SceneRenderState *state, 
    // Apply our object transform
    GFX->multWorld( objectToWorld );
 
+   //GFX->allocRenderToTextureTarget();
+
    // Deal with reflect pass otherwise
    // set the normal StateBlock
    if ( state->isReflectPass() )
       GFX->setStateBlock( mReflectSB );      
-   else      
+   else
       GFX->setStateBlock( mNormalSB );   
 
    // Set up the "generic" shaders
@@ -1375,14 +1427,14 @@ void AudioTextureObject::render( ObjectRenderInst *ri, SceneRenderState *state, 
    if (!mTextureTarget){      
       GFX->setTexture(0, mWarningTexture);      
    }else{
-      GFX->setTexture(0, mTextureBuffer.getPointer());
+      GFX->setTexture(0, mTexture);
    }
 
    // define shader type
    GFX->setupGenericShaders( GFXDevice::GSModColorTexture );
 
    // Draw our triangles
-   GFX->drawPrimitive( GFXTriangleList, 0, 4 );   
+   GFX->drawPrimitive( GFXTriangleList, 0, 4 );      
 }
 
 DefineEngineMethod( AudioTextureObject, postApply, void, (),,
