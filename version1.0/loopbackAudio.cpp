@@ -10,8 +10,11 @@
 #include "materials/baseMatInstance.h"
 #include "gfx/gfxDebugEvent.h"
 #include "gfx/gfxTransformSaver.h"
+#include "gfx/gfxDrawUtil.h"
+#include "gfx/gFont.h"
 //#include "gfx/bitmap/gBitmap.h"
 #include "renderInstance/renderPassManager.h"
+#include "math/mathUtils.h"
 
 #include "gfx/gfxDebugEvent.h"
 #include "gfx/gfxTransformSaver.h"
@@ -1368,26 +1371,63 @@ void AudioTextureObject::render( ObjectRenderInst *ri, SceneRenderState *state, 
    GFX->multWorld( objectToWorld );
 
    // render to texture
-   if(mTextureTarget){      
+   if(mTextureTarget){    
+      GFXTransformSaver subsaver;
+
       mGFXTextureTarget = GFX->allocRenderToTextureTarget();        
-      mGFXTextureTarget->attachTexture(GFXTextureTarget::RenderSlot::Color0,mTextureTarget->getTexture());      
+      mGFXTextureTarget->attachTexture(GFXTextureTarget::Color0,mTextureTarget->getTexture());
 
       GFX->pushActiveRenderTarget();      
       GFX->setActiveRenderTarget(mGFXTextureTarget);
+            
+      GFX->setWorldMatrix(MatrixF::Identity);   
+      GFX->setProjectionMatrix(MatrixF::Identity);
+      //MatrixF newtrans(EulerF(0.0,0.0,0.0),Point3F(0.0,0.0,0.0));  
+      MatrixF newview(EulerF(0.0,0.0,0.0),Point3F(0.0,0.0,10.0));      
+      MatrixF newproj(EulerF(0.0,0.0,0.0),Point3F(0.0,0.0,-10.0));
+      MatrixF newtrans = GFX->getWorldMatrix();      
+      newtrans.setColumn(3, Point3F(0.0f,1.0f,0.0f));  
+          
+      //newtrans.scale(getScale());
+      //newtrans.scale(getScale());      
 
+      //objectToWorld.dumpMatrix("objectToWorld");
+      //newtrans.dumpMatrix("newtrans");
+      
+      //GFX->setFrustum(-1,-1,1,1,1,-10);
+      F32 left, right, top, bottom;
+      F32 fnear = 0.01f;
+      F32 ffar = -10.0f;
+      MathUtils::makeFrustum( &left, &right, &top, &bottom, M_HALFPI_F, 1.0f, fnear );
+      //Con::printf("%f,%f,%f,%f",left,right,top,bottom);
+      GFX->setFrustum( left, right, bottom, top, fnear, ffar );
+      GFX->setViewMatrix(MatrixF::Identity);                   
+     
+      //GFX->clear(GFXClearTarget|GFXClearZBuffer,ColorI(0,0,0),1.0f,0);
+      //GFX->setOrtho(0,0,512,512,0,10.0);
       GFX->clear(GFXClearTarget,ColorI(0,0,0),1.0f,0);
       GFX->setStateBlock( mNormalSB );
       GFX->setVertexBuffer( mVertexBuffer );
       GFX->setTexture(0, mWarningTexture);
-      GFX->setupGenericShaders( GFXDevice::GSModColorTexture );
+      GFX->setupGenericShaders( GFXDevice::GSModColorTexture );      
+      //GFX->multWorld( newtrans );
+      //GFX->multWorld(objectToWorld);
+      //GFX->drawPrimitive( GFXTriangleList, 0, 4 );
+
+      GFX->setWorldMatrix(MatrixF::Identity);
+      GFX->multWorld(newtrans);
       GFX->drawPrimitive( GFXTriangleList, 0, 4 );
+
+      //GFont tmpFont;
+      //GFX->getDrawUtil()->drawText(&tmpFont,Point2I(0,0),"hello texture");
+      GFX->setProjectionMatrix(MatrixF::Identity);
+      GFX->setWorldMatrix(MatrixF::Identity);
+      GFX->getDrawUtil()->drawLine(0,0,1.0,1.0,ColorI(255,255,255));
 
       mGFXTextureTarget->resolve();
             
       GFX->popActiveRenderTarget();
-   }
-
-   //GFX->allocRenderToTextureTarget();
+   }   
 
    // Deal with reflect pass otherwise
    // set the normal StateBlock
