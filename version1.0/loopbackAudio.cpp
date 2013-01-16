@@ -1371,7 +1371,9 @@ void AudioTextureObject::render( ObjectRenderInst *ri, SceneRenderState *state, 
    GFX->multWorld( objectToWorld );
 
    // render to texture
-   if(mTextureTarget){    
+   if(mTextureTarget){   
+      static F32 texrot = 0.0f;
+       
       GFXTransformSaver subsaver;
 
       mGFXTextureTarget = GFX->allocRenderToTextureTarget();        
@@ -1383,10 +1385,18 @@ void AudioTextureObject::render( ObjectRenderInst *ri, SceneRenderState *state, 
       GFX->setWorldMatrix(MatrixF::Identity);   
       GFX->setProjectionMatrix(MatrixF::Identity);
       //MatrixF newtrans(EulerF(0.0,0.0,0.0),Point3F(0.0,0.0,0.0));  
-      MatrixF newview(EulerF(0.0,0.0,0.0),Point3F(0.0,0.0,10.0));      
+      //MatrixF newview(EulerF(0.0,0.0,0.0),Point3F(0.0,0.0,10.0));      
       MatrixF newproj(EulerF(0.0,0.0,0.0),Point3F(0.0,0.0,-10.0));
-      MatrixF newtrans = GFX->getWorldMatrix();      
-      newtrans.setColumn(3, Point3F(0.0f,1.0f,0.0f));  
+      MatrixF newtrans = GFX->getWorldMatrix();
+      newtrans = newtrans.set(EulerF(0.0f,0.0f,texrot));  
+      texrot += 0.01f;
+      if(texrot >= 360.0f)
+         texrot = 0.0f;   
+      newtrans.setColumn(3, Point3F(0.0f,0.0f,0.0f)); 
+      
+      MatrixF newview = MatrixF::Identity;
+      newview.setColumn(3, Point3F(0.0f,1.0f,0.0f));
+      GFX->setViewMatrix(newview);   
           
       //newtrans.scale(getScale());
       //newtrans.scale(getScale());      
@@ -1400,8 +1410,9 @@ void AudioTextureObject::render( ObjectRenderInst *ri, SceneRenderState *state, 
       F32 ffar = -10.0f;
       MathUtils::makeFrustum( &left, &right, &top, &bottom, M_HALFPI_F, 1.0f, fnear );
       //Con::printf("%f,%f,%f,%f",left,right,top,bottom);
+      Frustum tmpFrust = GFX->getFrustum();
       GFX->setFrustum( left, right, bottom, top, fnear, ffar );
-      GFX->setViewMatrix(MatrixF::Identity);                   
+                       
      
       //GFX->clear(GFXClearTarget|GFXClearZBuffer,ColorI(0,0,0),1.0f,0);
       //GFX->setOrtho(0,0,512,512,0,10.0);
@@ -1421,10 +1432,13 @@ void AudioTextureObject::render( ObjectRenderInst *ri, SceneRenderState *state, 
       //GFont tmpFont;
       //GFX->getDrawUtil()->drawText(&tmpFont,Point2I(0,0),"hello texture");
       GFX->setProjectionMatrix(MatrixF::Identity);
+      GFX->setViewMatrix(MatrixF::Identity);
       GFX->setWorldMatrix(MatrixF::Identity);
       GFX->getDrawUtil()->drawLine(0,0,1.0,1.0,ColorI(255,255,255));
 
       mGFXTextureTarget->resolve();
+
+      GFX->setFrustum(tmpFrust);
             
       GFX->popActiveRenderTarget();
    }   
