@@ -13,12 +13,14 @@
 #include "console/simObject.h"
 #include "console/simSet.h"
 #include "materials/matTextureTarget.h"
-
+#include "gui/core/guiTypes.h"
+#include "gui/worldEditor/gizmo.h"
 
 #include "gfx/gfxStateBlock.h"
 #include "gfx/gfxVertexBuffer.h"
 #include "gfx/gfxPrimitiveBuffer.h"
 #include "gfx/gfxTarget.h"
+#include "materials/shaderData.h"
 
 #include <mmsystem.h>
 #include <mmdeviceapi.h>
@@ -314,6 +316,13 @@ private:
    GFXVertexBufferHandle< VertexType > mVertexBuffer;
    //GFXPrimitiveBufferHandle            mPrimitiveBuffer;
 
+   // shader
+   GFXShaderRef mShader;
+
+   // gui profile for fonts and stuff
+   GuiControlProfile* mProfile;
+   String mProfileName;
+
 public:
    AudioTextureObject();
    virtual ~AudioTextureObject();
@@ -329,6 +338,11 @@ public:
 
    // Set up any fields that we want to be editable (like position or render enable)
    static void initPersistFields();
+
+   // custom drawing methods
+   void drawTriLine( F32 x1, F32 y1, F32 x2, F32 y2, const ColorI &color, F32 thickness = 0.1f );
+   void drawLine( F32 x1, F32 y1, F32 x2, F32 y2, const ColorI &color );
+   void drawLine( F32 x1, F32 y1, F32 z1, F32 x2, F32 y2, F32 z2, const ColorI &color );
 
    // Handle when we are added to the scene and removed from the scene
    bool onAdd();
@@ -372,5 +386,18 @@ public:
 private:
    AudioTextureObject* mAudioTextureObject;
 };
+
+/*
+void drawQuadLines(U32 numPoints, Point2F *points, F32 width=0.0f){
+   if(numPoints < 2){
+      return;
+   }
+   
+   // define 2 tri line
+   
+
+   Point3F points3d[numpoints];
+}
+*/
 
 #endif // _LOOPBACK_AUDIO_H_

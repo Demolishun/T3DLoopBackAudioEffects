@@ -16,6 +16,7 @@
 #include "renderInstance/renderPassManager.h"
 #include "math/mathUtils.h"
 
+
 #include "gfx/gfxDebugEvent.h"
 #include "gfx/gfxTransformSaver.h"
 //#include <avrt.h>
@@ -23,6 +24,8 @@
 
 #include "kiss_fft/kiss_fft.h"
 #include "kiss_fft/kiss_fftr.h"
+
+#include <D3dx9core.h>
 
 extern bool gEditingMission;
 
@@ -1013,6 +1016,8 @@ AudioTextureObject::AudioTextureObject(){
    mTexSize = 512;
 
    mTexture = NULL; 
+
+   mProfile = NULL;
 }
 AudioTextureObject::~AudioTextureObject(){   
 }
@@ -1024,6 +1029,10 @@ void AudioTextureObject::initPersistFields(){
    addField( "texture",      TypeRealString, Offset( mTextureName, AudioTextureObject ),
       "The target render texture." );
    endGroup( "Rendering" );
+   addGroup("Control");   
+   //addField("profile", TYPEID< GuiControlProfile >(), Offset(mProfile, AudioTextureObject));
+   addField("profileName", TypeRealString, Offset(mProfileName, AudioTextureObject));
+   endGroup("Control");
 
    // SceneObject already handles exposing the transform
    Parent::initPersistFields();
@@ -1068,6 +1077,13 @@ void AudioTextureObject::onRemove(){
       SAFE_DELETE(mTextureTarget);      
    }   
 
+   // profile management
+   if ( mProfile )
+   {
+      mProfile->unregisterReference((SimObject**)&mProfile);
+      mProfile = NULL;
+   }
+
    Parent::onRemove();
 }
 
@@ -1092,8 +1108,10 @@ U32 AudioTextureObject::packUpdate( NetConnection *conn, U32 mask, BitStream *st
    }
 
    // Write out any of the updated editable properties
-   if ( stream->writeFlag( mask & UpdateMask ) )
+   if ( stream->writeFlag( mask & UpdateMask ) ){
       stream->write( mTextureName );
+      stream->write( mProfileName );
+   }
 
    return retMask;
 }
@@ -1113,7 +1131,8 @@ void AudioTextureObject::unpackUpdate( NetConnection *conn, BitStream *stream ){
    if ( stream->readFlag() )  // UpdateMask
    {
       stream->read( &mTextureName );
-
+      stream->read( &mProfileName );
+   
       if ( isProperlyAdded() )       
          updateMaterial();      
    }
@@ -1218,7 +1237,7 @@ void AudioTextureObject::createGeometry(){
    desc.samplersDefined = true;
 
    // Linear: Create wrap SB
-   desc.samplers[0] = GFXSamplerStateDesc::getWrapLinear();
+   //desc.samplers[0] = GFXSamplerStateDesc::getWrapLinear();
    //mBitmapStretchWrapLinearSB = mDevice->createStateBlock(bitmapStretchSR);
 
    // Linear: Create clamp SB
@@ -1240,6 +1259,19 @@ void AudioTextureObject::createGeometry(){
    desc.cullDefined = true;
    desc.cullMode = GFXCullCW;
    mReflectSB = GFX->createStateBlock( desc );   
+
+   // get shader
+   if(0){
+      ShaderData *shaderData;
+      String sName;
+      sName = "TestShader";
+      mShader = Sim::findObject( sName.c_str(), shaderData ) ? shaderData->getShader() : NULL; 
+      if(mShader.isNull()){
+         Con::warnf("Error using shader: %s", sName.c_str());
+      }else{
+         mShader->registerResourceWithDevice(GFX);      
+      }
+   }
 }
 
 void AudioTextureObject::updateMaterial()
@@ -1293,7 +1325,28 @@ void AudioTextureObject::updateMaterial()
    }else{
       if(mTextureTarget)
          SAFE_DELETE(mTextureTarget);
-   }       
+   }   
+
+   if(mProfileName.isNotEmpty()){
+      GuiControlProfile *profile = NULL;
+      if ( Sim::findObject( mProfileName, profile ) ){
+         //setControlProfile( profile ); 
+         if(mProfile){
+            mProfile->unregisterReference((SimObject**)&mProfile);
+            mProfile = NULL;
+         }
+         
+         if ( profile != mProfile ){
+            mProfile = profile;
+            mProfile->registerReference((SimObject**)&mProfile);
+         }
+      }
+   }else{
+      if(mProfile){
+         mProfile->unregisterReference((SimObject**)&mProfile);
+         mProfile = NULL;
+      }
+   }   
 
    /*
    if( mMaterialName.isEmpty() )
@@ -1321,55 +1374,7 @@ void AudioTextureObject::prepRenderImage( SceneRenderState *state ){
    if ( mVertexBuffer.isNull() )
       createGeometry();   
 
-   // only display textured object when in the editor
-   //    if the render request is not submitted to the render pass then ::render is not called
-   if(!gEditingMission){
-      //return; 
-   }
-
-   // Allocate an ObjectRenderInst so that we can submit it to the RenderPassManager
-   ObjectRenderInst *ri = state->getRenderPass()->allocInst<ObjectRenderInst>();
-
-   // Now bind our rendering function so that it will get called
-   ri->renderDelegate.bind( this, &AudioTextureObject::render );
-
-   // Set our RenderInst as a standard object render
-   ri->type = RenderPassManager::RIT_Object;
-
-   // Set our sorting keys to a default value
-   ri->defaultKey = 0;
-   ri->defaultKey2 = 0;
-
-   // Submit our RenderInst to the RenderPassManager
-   state->getRenderPass()->addInst( ri );   
-}
-
-void AudioTextureObject::render( ObjectRenderInst *ri, SceneRenderState *state, BaseMatInstance *overrideMat ){
-   //Con::warnf("AudioTextureObject::render - called");
-
-   if ( overrideMat )
-      return;
-
-   if ( mVertexBuffer.isNull() )
-      return;     
-
-   PROFILE_SCOPE(AudioTextureObject_Render);
-
-   // Set up a GFX debug event (this helps with debugging rendering events in external tools)
-   GFXDEBUGEVENT_SCOPE( AudioTextureObject_Render, ColorI::RED );
-
-   // GFXTransformSaver is a handy helper class that restores
-   // the current GFX matrices to their original values when
-   // it goes out of scope at the end of the function
-   GFXTransformSaver saver;   
-
-   // Calculate our object to world transform matrix
-   MatrixF objectToWorld = getRenderTransform();
-   objectToWorld.scale( getScale() );
-
-   // Apply our object transform
-   GFX->multWorld( objectToWorld );
-
+   // do render to texture here
    // render to texture
    if(mTextureTarget){   
       static F32 texrot = 0.0f;
@@ -1420,7 +1425,10 @@ void AudioTextureObject::render( ObjectRenderInst *ri, SceneRenderState *state, 
       GFX->setStateBlock( mNormalSB );
       GFX->setVertexBuffer( mVertexBuffer );
       GFX->setTexture(0, mWarningTexture);
-      GFX->setupGenericShaders( GFXDevice::GSModColorTexture );      
+      //GFX->setTexture(0, mTexture);
+      GFX->setupGenericShaders( GFXDevice::GSModColorTexture );  
+      //GFX->setupGenericShaders( GFXDevice::GSTexture );
+      //GFX->setShader(GFXShader     
       //GFX->multWorld( newtrans );
       //GFX->multWorld(objectToWorld);
       //GFX->drawPrimitive( GFXTriangleList, 0, 4 );
@@ -1428,20 +1436,81 @@ void AudioTextureObject::render( ObjectRenderInst *ri, SceneRenderState *state, 
       GFX->setWorldMatrix(MatrixF::Identity);
       GFX->multWorld(newtrans);
       GFX->drawPrimitive( GFXTriangleList, 0, 4 );
-
-      //GFont tmpFont;
-      //GFX->getDrawUtil()->drawText(&tmpFont,Point2I(0,0),"hello texture");
+            
       GFX->setProjectionMatrix(MatrixF::Identity);
       GFX->setViewMatrix(MatrixF::Identity);
       GFX->setWorldMatrix(MatrixF::Identity);
-      GFX->getDrawUtil()->drawLine(0,0,1.0,1.0,ColorI(255,255,255));
+
+      //GFX->setShader
+      
+      if(mShader.isValid()){         
+         GFX->setShader(mShader);
+      } 
+
+      GFX->setTexture(0, NULL);      
+
+      //drawLine(0.0f,0.0f,0.5f,0.5f,ColorI(255,255,255));
+      drawTriLine(0.0f,0.0f,0.5f,0.5f,ColorI(255,255,255),0.01f);
+      //GFX->getDrawUtil()->drawLine(0,0,1.0,1.0,ColorI(255,255,255));
+
+      if(mProfile)
+         GFX->getDrawUtil()->drawText(mProfile->mFont,Point2I(0,0),"hello texture");
 
       mGFXTextureTarget->resolve();
 
       GFX->setFrustum(tmpFrust);
             
       GFX->popActiveRenderTarget();
-   }   
+   }
+
+   // only display textured object when in the editor
+   //    if the render request is not submitted to the render pass then ::render is not called
+   if(!gEditingMission){
+      //return; 
+   }
+
+   // Allocate an ObjectRenderInst so that we can submit it to the RenderPassManager
+   ObjectRenderInst *ri = state->getRenderPass()->allocInst<ObjectRenderInst>();
+
+   // Now bind our rendering function so that it will get called
+   ri->renderDelegate.bind( this, &AudioTextureObject::render );
+
+   // Set our RenderInst as a standard object render
+   ri->type = RenderPassManager::RIT_Object;
+
+   // Set our sorting keys to a default value
+   ri->defaultKey = 0;
+   ri->defaultKey2 = 0;
+
+   // Submit our RenderInst to the RenderPassManager
+   state->getRenderPass()->addInst( ri );      
+}
+
+void AudioTextureObject::render( ObjectRenderInst *ri, SceneRenderState *state, BaseMatInstance *overrideMat ){
+   //Con::warnf("AudioTextureObject::render - called");
+
+   if ( overrideMat )
+      return;
+
+   if ( mVertexBuffer.isNull() )
+      return;     
+
+   PROFILE_SCOPE(AudioTextureObject_Render);
+
+   // Set up a GFX debug event (this helps with debugging rendering events in external tools)
+   GFXDEBUGEVENT_SCOPE( AudioTextureObject_Render, ColorI::RED );
+
+   // GFXTransformSaver is a handy helper class that restores
+   // the current GFX matrices to their original values when
+   // it goes out of scope at the end of the function
+   GFXTransformSaver saver;   
+
+   // Calculate our object to world transform matrix
+   MatrixF objectToWorld = getRenderTransform();
+   objectToWorld.scale( getScale() );
+
+   // Apply our object transform
+   GFX->multWorld( objectToWorld );    
 
    // Deal with reflect pass otherwise
    // set the normal StateBlock
@@ -1472,6 +1541,78 @@ void AudioTextureObject::render( ObjectRenderInst *ri, SceneRenderState *state, 
    // Draw our triangles
    GFX->drawPrimitive( GFXTriangleList, 0, 4 );      
 }
+
+void AudioTextureObject::drawTriLine( F32 x1, F32 y1, F32 x2, F32 y2, const ColorI &color, F32 thickness )
+{
+   GFXVertexBufferHandle<GFXVertexPC> verts( GFX, 12, GFXBufferTypeVolatile );
+
+   F32 offset = thickness/2.0f;
+
+   F32 xdiff = x2-x1;
+   F32 ydiff = y2-y1;   
+
+   Point3F vect(xdiff,ydiff,0.0f);   
+   vect = mNormalize(vect); 
+   Point2F ovect(offset*vect.x,offset*vect.y);
+
+   verts.lock();
+   
+   verts[0].point.set( x1 - ovect.x, y1 - ovect.y, 0.0f );
+   verts[1].point.set( x1 - ovect.x, y1 + ovect.y, 0.0f );
+   verts[2].point.set( x1 + ovect.x, y1 - ovect.y, 0.0f );   
+
+   verts[3].point.set( x2 + ovect.x, y2 + ovect.y, 0.0f );
+   verts[4].point.set( x2 + ovect.x, y2 - ovect.y, 0.0f );
+   verts[5].point.set( x2 - ovect.x, y2 + ovect.y, 0.0f );   
+
+   verts[6].point.set( x1 - ovect.x, y1 + ovect.y, 0.0f );
+   verts[7].point.set( x2 - ovect.x, y2 + ovect.y, 0.0f );
+   verts[8].point.set( x2 + ovect.x, y2 - ovect.y, 0.0f );
+
+   verts[9].point.set( x2 + ovect.x, y2 - ovect.y, 0.0f );
+   verts[10].point.set( x1 + ovect.x, y1 - ovect.y, 0.0f );
+   verts[11].point.set( x1 - ovect.x, y1 + ovect.y, 0.0f );
+
+   verts[0].color = color;
+   verts[1].color = color;
+   verts[2].color = color;
+   verts[3].color = color;
+   verts[4].color = color;
+   verts[5].color = color;
+   verts[6].color = color;
+   verts[7].color = color;
+   verts[8].color = color;
+   verts[9].color = color;
+   verts[10].color = color;
+   verts[11].color = color;
+
+   verts.unlock();
+
+   GFX->setVertexBuffer( verts );
+   GFX->drawPrimitive( GFXTriangleList, 0, 4 );   
+}
+void AudioTextureObject::drawLine( F32 x1, F32 y1, F32 x2, F32 y2, const ColorI &color )
+{
+   drawLine( x1, y1, 0.0f, x2, y2, 0.0f, color );
+}
+void AudioTextureObject::drawLine( F32 x1, F32 y1, F32 z1, F32 x2, F32 y2, F32 z2, const ColorI &color )
+{
+   GFXVertexBufferHandle<GFXVertexPC> verts( GFX, 2, GFXBufferTypeVolatile );
+   verts.lock();
+
+   verts[0].point.set( x1, y1, z1 );
+   verts[1].point.set( x2, y2, z2 );
+
+   verts[0].color = color;
+   verts[1].color = color;
+
+   verts.unlock();
+
+   GFX->setVertexBuffer( verts );
+   //GFX->setStateBlock( mRectFillSB );
+   GFX->drawPrimitive( GFXLineList, 0, 1 );
+}
+
 
 DefineEngineMethod( AudioTextureObject, postApply, void, (),,
    "A utility method for forcing a network update.\n")
