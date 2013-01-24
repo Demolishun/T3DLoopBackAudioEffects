@@ -120,6 +120,10 @@ public:
    DECLARE_CONOBJECT(AudioTextureObject);
 };
 
+// Named Texture Target Object
+// This object is used to register a texture target object so it can be used later.
+// It can be found by searching using this function: NamedTexTarget::find(String textureName)
+// The texture name is the textureName attribute of the object.
 class NamedTexTargetObject : public SimObject
 {
 private:
@@ -127,6 +131,7 @@ private:
 
    // name used to define NameTexTarget
    String mTexTargetName;
+
    // actual texture target
    NamedTexTarget mTexTarget;
 
@@ -137,13 +142,7 @@ public:
    static void initPersistFields();
 
    virtual bool onAdd();
-   virtual void onRemove();
-
-   /*
-   NamedTexTarget* getNamedTexTarget(){
-      return &mTexTarget;
-   }
-   */
+   virtual void onRemove();   
 
    DECLARE_CONOBJECT(NamedTexTargetObject);
 };
