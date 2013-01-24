@@ -622,3 +622,44 @@ DefineEngineMethod( AudioTextureObject, postApply, void, (),,
 {
 	object->inspectPostApply();
 }
+
+IMPLEMENT_CONOBJECT(NamedTexTargetObject);
+
+NamedTexTargetObject::NamedTexTargetObject(){
+}
+NamedTexTargetObject::~NamedTexTargetObject(){
+}
+
+void NamedTexTargetObject::initPersistFields(){
+   addGroup( "Settings" );
+      addField( "targetName", TypeRealString, Offset(mTexTargetName, NamedTexTargetObject), 
+         "Name used to define NamedTexTarget");
+   endGroup( "Settings" );
+
+   Parent::initPersistFields();
+}
+
+bool NamedTexTargetObject::onAdd(){
+   if(!Parent::onAdd())
+      return false;
+
+   if(mTexTargetName.isEmpty()){  
+      Con::warnf("NamedTexTargetObject - targetName is not set, cannot register target.");
+      return true;
+   }    
+   
+   if(NamedTexTarget::find(mTexTargetName) != NULL){
+      Con::warnf("NamedTexTargetObject - targetName is already registered, cannot register target name: %s",mTexTargetName.c_str());         
+      return true;
+   }
+
+   mTexTarget.registerWithName(mTexTargetName);
+
+   return true;
+}
+void NamedTexTargetObject::onRemove(){
+   if(mTexTarget.isRegistered())
+      mTexTarget.unregister();   
+
+   Parent::onRemove();
+}

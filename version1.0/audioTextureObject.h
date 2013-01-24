@@ -120,4 +120,32 @@ public:
    DECLARE_CONOBJECT(AudioTextureObject);
 };
 
+class NamedTexTargetObject : public SimObject
+{
+private:
+   typedef SimObject Parent;
+
+   // name used to define NameTexTarget
+   String mTexTargetName;
+   // actual texture target
+   NamedTexTarget mTexTarget;
+
+public:
+   NamedTexTargetObject();
+   virtual ~NamedTexTargetObject();
+
+   static void initPersistFields();
+
+   virtual bool onAdd();
+   virtual void onRemove();
+
+   /*
+   NamedTexTarget* getNamedTexTarget(){
+      return &mTexTarget;
+   }
+   */
+
+   DECLARE_CONOBJECT(NamedTexTargetObject);
+};
+
 #endif  // _AUDIO_TEXTURE_OBJECT_H_
