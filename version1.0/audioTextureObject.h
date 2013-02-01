@@ -32,9 +32,6 @@ private:
    GFXTexHandle   mWarningTexture;
    GFXTextureObject* mTexture; // 
 
-   // The size in pixels of the backing texture
-   S32 mTexSize;
-
    // texture reference name for use in materials
    //    eg: diffuseMap[0] = "#MyWebTexture";
    String mTextureName;  
@@ -47,12 +44,7 @@ private:
    // enable rendering texture onto an object in the scene
    //    this will default to false to prevent rendering when used as a texture source for materials
    //    the texture will be mapped to a simple quad
-   bool mEnableRender;  
-
-   // The name of the Material we will use for rendering
-   //String            mMaterialName;
-   // The actual Material instance
-   //aseMatInstance*  mMaterialInst;
+   bool mEnableRender;     
 
    // render variables
    //typedef GFXVertexPCN VertexType;
@@ -138,9 +130,14 @@ private:
    // texture buffer
    GFXTexHandle mTextureBuffer;
 
+   // The size in pixels of the backing texture
+   S32 mTexSize;
+
 public:
    NamedTexTargetObject();
    virtual ~NamedTexTargetObject();
+
+   GFXTextureObject* getTexture(){return mTextureBuffer.getPointer();};
 
    static void initPersistFields();
 

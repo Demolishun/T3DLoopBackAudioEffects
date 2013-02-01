@@ -29,7 +29,6 @@ AudioTextureObject::AudioTextureObject(){
    mTypeMask |= StaticObjectType | StaticShapeObjectType;
 
    mTextureTarget = NULL;   
-   mTexSize = 1024;
 
    mTexture = NULL; 
 
@@ -304,15 +303,7 @@ void AudioTextureObject::updateMaterial()
       }
    }    
 
-   if(mTextureName.isNotEmpty()){
-      /*
-      if(!mTextureTarget){
-         // create texture target object with the pointer to this object
-         mTextureTarget = new NamedTexTarget();
-         if(!mTextureTarget)
-            Con::errorf("AudioTextureObject::updateMaterial - could not allocate memory for new texture target.");
-      } 
-      */
+   if(mTextureName.isNotEmpty()){      
       
       if(mTextureTarget && !mTextureName.equal( mTextureTarget->getName(), String::NoCase )){
          mTextureTarget = NULL;
@@ -323,51 +314,14 @@ void AudioTextureObject::updateMaterial()
          mTextureTarget = NamedTexTarget::find(mTextureName);
          if(!mTextureTarget)
             Con::errorf("AudioTextureObject::updateMaterial - could not find texture target: %s.",mTextureName.c_str());
-      }     
-
-      if(!mTextureBuffer1.getPointer()){
-         // allocate space for texture
-         mTextureBuffer1.set(mTexSize, mTexSize, GFXFormatR8G8B8X8, &GFXDefaultRenderTargetProfile, "", 0); 
-
-         if(!mTextureBuffer1.getPointer()){
-            Con::errorf("AudioTextureObject::updateMaterial - could not allocate bitmap space for texture target.");
-         }
-      }  
-
-      if(mTextureTarget && mTextureBuffer1.getPointer()){
-         mTextureTarget->setTexture(mTextureBuffer1.getPointer());
-         mTexture = mTextureBuffer1.getPointer();
+      }            
+     
+      if(mTextureTarget){     
+         mTexture = mTextureTarget->getTexture();
       }else{
          mTexture = NULL;
-      }    
-
-      /*
-      // if we have a texture target and the name is not the same as what is already set on the target
-      if(mTextureTarget && !mTextureName.equal( mTextureTarget->getName(), String::NoCase )){         
-         // check to see if the name is already registered                  
-         if(!mTextureTarget->registerWithName(mTextureName)){
-            Con::errorf("AudioTextureObject::updateMaterial - could not register texture target name (%s).  The target name may already be in use.",mTextureName.c_str());
-            SAFE_DELETE(mTextureTarget);
-         }else{
-            // allocate space for texture
-            mTextureBuffer1.set(mTexSize, mTexSize, GFXFormatR8G8B8X8, &GFXDefaultRenderTargetProfile, "", 0);                        
-            //mTextureBuffer2.set(mTexSize, mTexSize, GFXFormatR8G8B8X8, &GFXDefaultRenderTargetProfile, "", 0); 
-            //GFXTextureObject* tmptex = mTextureBuffer1.getPointer();
-            
-                   
-            //mTextureBuffer1.set(mBitmap, &GFXDefaultPersistentProfile, false, String(""));            
-            //mTextureBuffer2.set(mBitmap, &GFXDefaultPersistentProfile, false, String(""));
-
-            // set the texture 
-            mTextureTarget->setTexture(mTextureBuffer1.getPointer());
-            Con::warnf("AudioTextureObject::updateMaterial - setting texture to texture target: %s",mTextureName.c_str());
-
-            // 
-            mTexture = mTextureBuffer1.getPointer();
-         } 
-               
-      }
-      */
+      }   
+      
    }else{
       mTextureTarget = NULL;
       mTexture = NULL;      
@@ -425,7 +379,7 @@ void AudioTextureObject::prepRenderImage( SceneRenderState *state ){
    if(mTexture){   
       static F32 texrot = 0.0f;
        
-      GFXTransformSaver subsaver;
+      GFXTransformSaver subsaver;     
 
       mGFXTextureTarget = GFX->allocRenderToTextureTarget();        
       mGFXTextureTarget->attachTexture(GFXTextureTarget::Color0,mTexture);
@@ -479,17 +433,15 @@ void AudioTextureObject::prepRenderImage( SceneRenderState *state ){
          //GFX->setShader(mShader);
       } 
 
-      GFX->setTexture(0, NULL);      
-
-      //drawLine(0.0f,0.0f,0.5f,0.5f,ColorI(255,255,255));
-      F32 size = float(mTexSize);
-      drawTriLine(0.0f,0.0f,0.5f,0.5f,ColorI(255,255,255),size*0.01f/size);
-      //GFX->getDrawUtil()->drawLine(0,0,1.0,1.0,ColorI(255,255,255));
+      GFX->setTexture(0, NULL);            
+      
+      F32 size = float(mTexture->getSize().x);
+      drawTriLine(0.0f,0.0f,0.5f,0.5f,ColorI(255,255,255),size*0.01f/size);      
 
       if(mProfile)
          GFX->getDrawUtil()->drawText(mProfile->mFont,Point2I(0,0),"hello texture");
 
-      mGFXTextureTarget->resolve();
+      mGFXTextureTarget->resolve();      
 
       GFX->setFrustum(tmpFrust);
             
@@ -499,7 +451,7 @@ void AudioTextureObject::prepRenderImage( SceneRenderState *state ){
    // only display textured object when in the editor
    //    if the render request is not submitted to the render pass then ::render is not called
    if(!gEditingMission){
-      //return; 
+      return; 
    }
 
    // Allocate an ObjectRenderInst so that we can submit it to the RenderPassManager
@@ -656,7 +608,7 @@ DefineEngineMethod( AudioTextureObject, postApply, void, (),,
 IMPLEMENT_CONOBJECT(NamedTexTargetObject);
 
 NamedTexTargetObject::NamedTexTargetObject(){
-   
+   mTexSize = 1024;
 }
 NamedTexTargetObject::~NamedTexTargetObject(){   
 }
@@ -665,6 +617,8 @@ void NamedTexTargetObject::initPersistFields(){
    addGroup( "Settings" );
       addField( "targetName", TypeRealString, Offset(mTexTargetName, NamedTexTargetObject), 
          "Name used to define NamedTexTarget");
+      addField( "texSize", TypeS32, Offset( mTexSize, NamedTexTargetObject ),
+         "Texture size setting for both x and y.  Not dynamically updated.");
    endGroup( "Settings" );
 
    Parent::initPersistFields();
@@ -686,13 +640,11 @@ bool NamedTexTargetObject::onAdd(){
 
    Con::warnf("NamedTexTargetObject::onAdd - Texture target registered: %s",mTexTargetName.c_str());
    mTexTarget.registerWithName(mTexTargetName);
-
-   /*
-   mTextureBuffer.set(512, 512, GFXFormatR8G8B8X8, &GFXDefaultRenderTargetProfile, "", 0); 
+   
+   mTextureBuffer.set(mTexSize, mTexSize, GFXFormatR8G8B8X8, &GFXDefaultRenderTargetProfile, "", 0); 
    if(mTextureBuffer.getPointer()){
       mTexTarget.setTexture(mTextureBuffer.getPointer());
    }
-   */
 
    return true;
 }
@@ -700,8 +652,8 @@ void NamedTexTargetObject::onRemove(){
    if(mTexTarget.isRegistered())
       mTexTarget.unregister();   
 
-   //if(mTextureBuffer.getPointer())
-   //   mTextureBuffer.free();
+   if(mTextureBuffer.getPointer())
+      mTextureBuffer.free();
 
    Parent::onRemove();
 }
