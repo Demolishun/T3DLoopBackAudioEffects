@@ -31,22 +31,6 @@ class BaseMatInstance;
 
 #define AUDIO_NUM_CHANNELS 2
 
-/*
-// new type
-union F32_U32
-{
-F32 f;
-U32 i;
-};
-// transfer variables
-volatile F32_U32 AudioFreqOutput[AUDIO_FREQ_BANDS];  // controlled by loopback thread
-volatile U32 AudioBandFreqs[AUDIO_FREQ_BANDS]; // controlled by main thread
-
-// working buffers to store data and use in equations in loopback thread
-F32 _AudioFreqOutput[AUDIO_FREQ_BANDS]; // internal value
-U32 _AudioBandFreqs[AUDIO_FREQ_BANDS]; // internal data
-*/
-
 //#define REFTIMES_PER_SEC  10000000
 //#define REFTIMES_PER_SEC  (10000000/20) // run every 50 mS
 #define REFTIMES_PER_SEC  (10000000/10) // run every 100 mS - much better freq delineation at the low end
@@ -103,34 +87,7 @@ public:
 
    // add/remove objects to process loop
    static void addLoopbackObject(LoopBackObject* obj);        
-   static void removeLoopbackObject(LoopBackObject* obj);
-
-   // sample rate of audio
-   /*
-   S32 getSampleRate(){
-      if(pwfx != NULL)
-         return pwfx->nSamplesPerSec;
-      else
-         return -1;
-   };
-   */
-   // bin width of FFT         
-   /*
-   U32 getFFTBinWidth(){
-      
-      //return dAtomicRead(lastSampleSize);
-      return 0;
-   }
-   */
-   // number of bands
-   /*
-   U32 getNumFreqBands(){
-      return AUDIO_FREQ_BANDS;
-   }
-   */
-   // calculate frequency per BIN as BIN*SR/FFTWIDTH
-   // each band = sumof(((AUDIO_FFT_BINS/2)/AUDIO_FREQ_BANDS)) % AUDIO_FREQ_BANDS)
-   // basically the bands are clumped using a modulus to determine which bins belong in which band
+   static void removeLoopbackObject(LoopBackObject* obj);   
 };
 
 AudioLoopbackThread *_activeLoopbackThread = NULL;
@@ -139,23 +96,7 @@ class LoopBackObject : public SimObject
 {
 typedef SimObject Parent;
 
-//friend AudioLoopbackThread;
-protected:
-   /*      
-   // contol access to buffer and details
-   static Mutex sampleBufferMutex;      
-   // 2 channels in the sample buffer
-   static F32* sampleBuffer;  // should this memory ever be freed?
-   static U32 sampleBufferSize; // total size of buffer divided by 2 (stereo data)
-   static U32 sampleBufferSamples; // total number of samples in buffer
-   static U32 samplesPerSecond;  // used to calculate bin freqs
-   */
-
-   /*
-   static Mutex loopbackObjectsMutex;
-   static Vector<LoopBackObject*> loopbackObjects;
-   */  
-   
+protected:       
    // external data source buffer
    Mutex* extSampleBufferMutex;
    F32** extSampleBuffer;

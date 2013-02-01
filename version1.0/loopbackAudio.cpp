@@ -53,22 +53,7 @@ AudioLoopbackThread::AudioLoopbackThread(bool start_thread, bool autodelete)
    pAudioClient = NULL;
    pCaptureClient = NULL;
    pwfx = NULL;
-   packetLength = 0; 
-
-   // sane defaults
-   /*
-   U32 freq = 30;
-   for(U32 count=0; count<AUDIO_FREQ_BANDS; count++){
-      AudioBandFreqs[count] = freq;
-      //Con::printf("band %d: %d",count,freq);
-      freq *= 2;      
-   }
-   
-   for(int count=0; count<AUDIO_FREQ_BANDS; count++){      
-      AudioFreqOutput[count].f = 0.0f;
-      _AudioFreqOutput[count] = 0.0f;      
-   }
-   */
+   packetLength = 0;    
 
    internalSampleData = NULL;
 }
@@ -79,17 +64,7 @@ AudioLoopbackThread::~AudioLoopbackThread(){
       free(internalSampleData);  
 
    //Con::printf("Deallocating LoopBackObject::sampleBuffer");
-   /*
-   MutexHandle mutex;
-   mutex.lock( &LoopBackObject::sampleBufferMutex, true );
-   LoopBackObject::sampleBufferSize = 0;
-   LoopBackObject::sampleBufferSamples = 0;
-   LoopBackObject::samplesPerSecond = 0;
-   if(LoopBackObject::sampleBuffer){
-      free(LoopBackObject::sampleBuffer);
-      LoopBackObject::sampleBuffer = NULL;
-   }
-   */
+   
    MutexHandle mutex;
    mutex.lock( &sampleBufferMutex, true );
    sampleBufferSize = 0;
@@ -99,7 +74,7 @@ AudioLoopbackThread::~AudioLoopbackThread(){
       free(sampleBuffer);
       sampleBuffer = NULL;
    }
-   //mutex.unlock();
+   
    //Con::printf("Done Deallocating LoopBackObject::sampleBuffer");
 }
 
@@ -162,6 +137,7 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
    AUDIOLB_EXIT_ON_ERROR(hr)
 
    // register with MMCSS
+   // I think this controls priority to be realtime, might need this
    /*
    DWORD nTaskIndex = 0;
    HANDLE hTask = AvSetMmThreadCharacteristics(L"Capture", &nTaskIndex);
@@ -185,26 +161,14 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
 
    F32 summing_buffer[AUDIO_FREQ_BANDS];
    U32 samplesize = 0; 
-   U32 buffersize = 0;
-   //U32 sum_divisor = 0;   
+   U32 buffersize = 0;  
 
    // thread control loop
    while(!checkForStop()){            
-      Sleep(hnsActualDuration/REFTIMES_PER_MILLISEC/2);
-
-      // get frequencies per band
-         // allows real time updates
-      /*
-      for(U32 count=0; count<AUDIO_FREQ_BANDS; count++){
-         _AudioBandFreqs[count] = dAtomicRead(AudioBandFreqs[count]);
-      }
-      */
+      Sleep(hnsActualDuration/REFTIMES_PER_MILLISEC/2);      
 
       hr = pCaptureClient->GetNextPacketSize(&packetLength);
-      AUDIOLB_EXIT_ON_ERROR(hr)
-
-      // keep packet length an even number
-      //packetLength &= 0xFFFFFFFE;      
+      AUDIOLB_EXIT_ON_ERROR(hr)      
 
       // clear summing buffer      
       for(U32 count=0; count<AUDIO_FREQ_BANDS; count++){
@@ -241,70 +205,13 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
                //Con::printf("%d", buffersize);  // verify allocation is working
             }
             F32 *pFloatData = reinterpret_cast<F32*>(pData);
-            //Con::printf("packetlength: %d",packetLength);
-            //F32 *windowedMonoData = new F32[packetLength];            
+            //Con::printf("packetlength: %d",packetLength);                   
             
-            for(U32 count=0; count<packetLength; count++){
-               // repack into mono and run through window function
-               //F32 packed = (pFloatData[count*pwfx->nChannels+0])*AUDIO_DATA_GAIN;
-               /*
-               F32 packed;
-               if(pwfx->nChannels > 1)
-                  packed = (pFloatData[count*pwfx->nChannels+0] + pFloatData[count*pwfx->nChannels+1])*AUDIO_DATA_GAIN;
-               else
-                  packed = (pFloatData[count*pwfx->nChannels+0])*AUDIO_DATA_GAIN;
-               */
-               //Con::printf("%.8f",packed);        
+            for(U32 count=0; count<packetLength; count++){               
                internalSampleData[currentindex*AUDIO_NUM_CHANNELS+count*AUDIO_NUM_CHANNELS+0] = pFloatData[count*pwfx->nChannels+0];
                internalSampleData[currentindex*AUDIO_NUM_CHANNELS+count*AUDIO_NUM_CHANNELS+1] = pFloatData[count*pwfx->nChannels+1];
-               //windowedMonoData[currentindex+count] = packed;//hanningWindow(packed, count, packetLength);
-               //windowedMonoData[count] = packed;
-            }            
-
-            /*
-            kiss_fftr_cfg st = kiss_fftr_alloc(packetLength,0,0,0);            
-            kiss_fft_cpx* out = (kiss_fft_cpx*)malloc(sizeof(kiss_fft_cpx)*(packetLength/2+1));
-            kiss_fftr(st,windowedMonoData,(kiss_fft_cpx*)out);  
-            
-            // combine freqs into bands
-            U32 bandstep = 0;
-            U32 currentfreqbin = 0;
-            
-            for(U32 count=0; count<(packetLength/2) && bandstep<AUDIO_FREQ_BANDS;){ 
-               // update value              
-               F32 combined = out[count].r * out[count].r + out[count].i * out[count].i;
-               summing_buffer[bandstep] += combined;
                
-               // increment and ready comparison data
-               count++;
-               currentfreqbin = (count*pwfx->nSamplesPerSec)/packetLength;
-               //Con::printf("%d", currentfreqbin);
-               if(currentfreqbin > _AudioBandFreqs[bandstep]){
-                  bandstep++;
-                  //Con::printf("%d", currentfreqbin);
-               }
-            }
-
-            sum_divisor++;
-            */
-            
-            /*
-            for(U32 count=0; count<(AUDIO_FFT_BINS/2); count++){
-               U32 resIndex = (count/((AUDIO_FFT_BINS/2)/AUDIO_FREQ_BANDS)) % AUDIO_FREQ_BANDS;
-               F32 combined = out[count].r * out[count].r + out[count].i * out[count].i;
-               //summing_buffer[resIndex] = lowPassFilter(combined, summing_buffer[resIndex], 0.2f);
-               summing_buffer[resIndex] += combined;
-            } 
-            */           
-               
-            /*                            
-            if(windowedMonoData)
-               delete windowedMonoData;
-            if(st)
-               kiss_fft_free(st);
-            if(out)
-               free(out);
-            */
+            }                        
          }else{
             // do calcs with zero for values
             // not needed, the value will zero out after audio source is removed
@@ -317,41 +224,14 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
          // start next capture
          hr = pCaptureClient->GetNextPacketSize(&packetLength);
          AUDIOLB_EXIT_ON_ERROR(hr)
-      }
-
-      // dB stuff
-      /*
-      if(sum_divisor){
-         for(U32 count=0; count<AUDIO_FREQ_BANDS; count++){
-            F32 sum = summing_buffer[count]/(F32)sum_divisor;
-            _AudioFreqOutput[count] = (F32)mLog(sum);
-             
-            //_AudioFreqOutput[count] = sum; 
-         }
-      }
-      */
-
-      //samplesize &= ~0x1;
+      }      
+      
       //Con::printf("%d",samplesize);
       if(!samplesize)
          continue;
 
       // resize external buffer as needed
-      // access to the external buffer is controlled by mutex
-      /*
-      MutexHandle mutex;
-      mutex.lock( &LoopBackObject::sampleBufferMutex, true );
-      if(buffersize > LoopBackObject::sampleBufferSize){
-         LoopBackObject::sampleBufferSize = buffersize;
-         LoopBackObject::sampleBuffer = (F32 *)realloc(LoopBackObject::sampleBuffer, sizeof(F32)*LoopBackObject::sampleBufferSize*AUDIO_NUM_CHANNELS);    
-      }
-      // copy sample details
-      LoopBackObject::samplesPerSecond = pwfx->nSamplesPerSec;
-      LoopBackObject::sampleBufferSamples = samplesize;      
-      // copy raw sample data to LoopBackObject buffer
-      memcpy(LoopBackObject::sampleBuffer,internalSampleData,sizeof(F32)*samplesize*AUDIO_NUM_CHANNELS);      
-      mutex.unlock();
-      */
+      // access to the external buffer is controlled by mutex      
       MutexHandle mutex;
       mutex.lock( &sampleBufferMutex, true );
       if(buffersize > sampleBufferSize){
@@ -381,76 +261,7 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
             
          obj->process();
       } 
-      mutex.unlock();      
-
-      // call script function in main thread
-      // called too fast and it will cause timing problems
-      // 100mS too fast, 200mS okay?
-      //const char* argv[] = {"onLoopBackAudioAcquire"};
-      //Con::execute(1,argv);
-      //const char* argv[] = {"onProcessAudioLoopBack"};
-      //Con::execute(1,argv);     
-
-      /*
-
-      samplesize &= ~0x1;
-      if(!samplesize)
-         continue;
-
-      // window the data
-      F32 packed;
-      for(U32 count=0; count<samplesize; count++){           
-         packed = (internalSampleData[count*AUDIO_NUM_CHANNELS+0] + internalSampleData[count*AUDIO_NUM_CHANNELS+1])*AUDIO_DATA_GAIN;       
-         internalSampleData[count] = hanningWindow(packed, count, samplesize);         
-      }
-
-      kiss_fftr_cfg st = kiss_fftr_alloc(samplesize,0,0,0);            
-      kiss_fft_cpx* out = (kiss_fft_cpx*)malloc(sizeof(kiss_fft_cpx)*(samplesize/2+1));
-      kiss_fftr(st,internalSampleData,(kiss_fft_cpx*)out);  
-      
-      // combine freqs into bands
-      U32 bandstep = 0;
-      U32 currentfreqbin = 0;
-      
-      for(U32 count=0; count<(samplesize/2) && bandstep<AUDIO_FREQ_BANDS;){ 
-         // update value              
-         F32 combined = out[count].r * out[count].r + out[count].i * out[count].i;
-         summing_buffer[bandstep] += combined;
-         
-         // increment and ready comparison data
-         count++;
-         currentfreqbin = (count*pwfx->nSamplesPerSec)/samplesize;
-         //Con::printf("%d", currentfreqbin);
-         if(currentfreqbin > _AudioBandFreqs[bandstep]){
-            bandstep++;
-            //Con::printf("%d", currentfreqbin);
-         }
-      }
-
-      if(st)
-         kiss_fft_free(st);
-      if(out)
-         free(out);
-
-      //static F32 lowest = 0;
-      for(U32 count=0; count<AUDIO_FREQ_BANDS; count++){
-         F32 sum = summing_buffer[count];
-         F32 logged = (F32)mLog(sum);
-         //if(logged < lowest)
-         //   lowest = logged;
-         //_AudioFreqOutput[count] = logged;// + mFabs(lowest);
-         _AudioFreqOutput[count] = lowPassFilter(logged,_AudioFreqOutput[count],0.5f);
-          
-         //_AudioFreqOutput[count] = sum; 
-      }
-
-      // update output variables      
-      for(int count=0; count<AUDIO_FREQ_BANDS; count++){              
-         AudioFreqOutput[count].f = _AudioFreqOutput[count];         
-      }          
-      //Con::printf("%.4f,%.4f",_AudioFreqOutput[0],_AudioFreqOutput[1]);
-      //Con::printf("%.4f,%.4f",AudioFreqOutput[0].f,AudioFreqOutput[1].f);
-      */
+      mutex.unlock();            
    }   
 
    hr = pAudioClient->Stop();  // Stop recording.
@@ -489,18 +300,6 @@ void AudioLoopbackThread::removeLoopbackObject(LoopBackObject* obj){
    obj->clearExtSampleBuffer();
    obj->setRemoveFunction(NULL);
 }
-
-// static members
-/*
-Mutex LoopBackObject::sampleBufferMutex;
-F32 *LoopBackObject::sampleBuffer = NULL;
-U32 LoopBackObject::sampleBufferSize = 0;
-U32 LoopBackObject::sampleBufferSamples = 0;
-U32 LoopBackObject::samplesPerSecond = 0;
-*/
-// set to keep track of objects
-//Mutex LoopBackObject::loopbackObjectsMutex;
-//Vector<LoopBackObject*> LoopBackObject::loopbackObjects;
 
 // console defs
 IMPLEMENT_CONOBJECT(LoopBackObject);
@@ -720,100 +519,6 @@ inline F32 lowPassFilter(F32 input, F32 last, F32 filter)
 {
    return last + filter * (input - last);
 }
-
-/*
-// atomic read console function
-DefineEngineFunction( getAudioLoopBackFreqs, const char*, (),,
-   "Get the frequency information from processing the current AudioLoopBack\n"
-   "@param No parameters.\n"
-   "@return Frequency band magnitudes in a space delimited string.\n"
-   "@ingroup AudioLoopBack" )
-{
-   // grab data from loopback thread
-   F32 audioFreqOutput[AUDIO_FREQ_BANDS];
-   F32_U32 tmp;
-   for(int count=0; count<AUDIO_FREQ_BANDS; count++){
-      // data tranfers as U32           
-      tmp.i = dAtomicRead(AudioFreqOutput[count].i);      
-      // retrieve from union as F32
-      audioFreqOutput[count] = tmp.f;        
-   }
-
-   // convert data to string and prepare return buffer
-   MemStream tempStream(256);
-   char buff[32];
-   for(int count=0; count<AUDIO_FREQ_BANDS; count++){
-      dSprintf(buff,32,"%.4f ",audioFreqOutput[count]);
-      tempStream.writeText(buff);
-   }   
-   char *ret = Con::getReturnBuffer(tempStream.getStreamSize());
-   dStrncpy(ret, (char *)tempStream.getBuffer(), tempStream.getStreamSize()-1);
-   ret[tempStream.getStreamSize()-1] = '\0';
-
-   return ret;
-}
-
-DefineEngineFunction( getAudioLoopBackBandFreqs, const char*, (),,
-   "Get the top frequency of each band from the current AudioLoopBack\n"
-   "@param No parameters.\n"
-   "@return Top frequency in each bands magnitudes in a space delimited string.\n"
-   "@ingroup AudioLoopBack" )
-{   
-   U32 audioBandFreqs[AUDIO_FREQ_BANDS];
-   for(int count=0; count<AUDIO_FREQ_BANDS; count++){
-      // data tranfers as U32           
-      audioBandFreqs[count] = dAtomicRead(AudioBandFreqs[count]);          
-   }
-   MemStream tempStream(256);
-   char buff[32];
-   for(int count=0; count<AUDIO_FREQ_BANDS; count++){
-      dSprintf(buff,32,"%d ",audioBandFreqs[count]);
-      tempStream.writeText(buff);
-   }   
-   char *ret = Con::getReturnBuffer(tempStream.getStreamSize());
-   dStrncpy(ret, (char *)tempStream.getBuffer(), tempStream.getStreamSize()-1);
-   ret[tempStream.getStreamSize()-1] = '\0';
-
-   return ret;
-}
-
-DefineEngineFunction( setAudioLoopBackBandFreqs, void, (const char *bandfreqstr),,
-   "Set the top frequency of each band for the current AudioLoopBack\n"
-   "@param No parameters.\n"
-   "@return Top frequency for each band in a space/comma delimited string.\n"
-   "@ingroup AudioLoopBack" )
-{  
-   char *buff = new char[dStrlen(bandfreqstr)];
-   dStrncpy(buff,bandfreqstr,dStrlen(bandfreqstr));
-   char *value;
-   value = dStrtok(buff, " ,");   
-   U32 count = 0;
-   while(value != NULL && count < AUDIO_FREQ_BANDS){
-      U32 tmp = dAtoui(value);
-      AudioBandFreqs[count] = tmp;
-      count++;
-      value = dStrtok(NULL, " ,");
-   }
-
-   delete buff;     
-}
-*/
-
-/*
-DefineEngineFunction( setAudioLoopBackFilters, void, (F32 filter1,F32 filter2,F32 filter3,F32 filter4,F32 filter5),,
-   "Get the frequency information from processing the current AudioLoopBackData\n"
-   "@param No parameters.\n"
-   "@return Frequency band magnitudes in a comma delimited string.\n"
-   "@ingroup AudioLoopBack" )
-{
-   //AudioFilterValues[AUDIO_FREQ_BANDS]
-   AudioFilterValues[0].f = filter1;
-   AudioFilterValues[1].f = filter2;
-   AudioFilterValues[2].f = filter3;
-   AudioFilterValues[3].f = filter4;
-   AudioFilterValues[4].f = filter5;
-}
-*/
 
 DefineEngineFunction( startAudioLoopBack, void, (),,
    "Get the frequency information from processing the current AudioLoopBack\n"

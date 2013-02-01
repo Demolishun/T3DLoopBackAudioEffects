@@ -88,10 +88,7 @@ void AudioTextureObject::onRemove(){
    removeFromScene();
 
    if(mWarningTexture)
-      SAFE_DELETE(mWarningTexture);
-   if(mTextureTarget){      
-      SAFE_DELETE(mTextureTarget);      
-   }   
+      SAFE_DELETE(mWarningTexture);   
 
    // profile management
    if ( mProfile )
@@ -308,15 +305,46 @@ void AudioTextureObject::updateMaterial()
    }    
 
    if(mTextureName.isNotEmpty()){
+      /*
       if(!mTextureTarget){
          // create texture target object with the pointer to this object
          mTextureTarget = new NamedTexTarget();
          if(!mTextureTarget)
             Con::errorf("AudioTextureObject::updateMaterial - could not allocate memory for new texture target.");
-      }      
+      } 
+      */
+      
+      if(mTextureTarget && !mTextureName.equal( mTextureTarget->getName(), String::NoCase )){
+         mTextureTarget = NULL;
+      }
+
+      if(!mTextureTarget){
+         // find texture target with this name
+         mTextureTarget = NamedTexTarget::find(mTextureName);
+         if(!mTextureTarget)
+            Con::errorf("AudioTextureObject::updateMaterial - could not find texture target: %s.",mTextureName.c_str());
+      }     
+
+      if(!mTextureBuffer1.getPointer()){
+         // allocate space for texture
+         mTextureBuffer1.set(mTexSize, mTexSize, GFXFormatR8G8B8X8, &GFXDefaultRenderTargetProfile, "", 0); 
+
+         if(!mTextureBuffer1.getPointer()){
+            Con::errorf("AudioTextureObject::updateMaterial - could not allocate bitmap space for texture target.");
+         }
+      }  
+
+      if(mTextureTarget && mTextureBuffer1.getPointer()){
+         mTextureTarget->setTexture(mTextureBuffer1.getPointer());
+         mTexture = mTextureBuffer1.getPointer();
+      }else{
+         mTexture = NULL;
+      }    
+
+      /*
       // if we have a texture target and the name is not the same as what is already set on the target
       if(mTextureTarget && !mTextureName.equal( mTextureTarget->getName(), String::NoCase )){         
-         // check to see if the name is already registered         
+         // check to see if the name is already registered                  
          if(!mTextureTarget->registerWithName(mTextureName)){
             Con::errorf("AudioTextureObject::updateMaterial - could not register texture target name (%s).  The target name may already be in use.",mTextureName.c_str());
             SAFE_DELETE(mTextureTarget);
@@ -336,11 +364,13 @@ void AudioTextureObject::updateMaterial()
 
             // 
             mTexture = mTextureBuffer1.getPointer();
-         }         
+         } 
+               
       }
+      */
    }else{
-      if(mTextureTarget)
-         SAFE_DELETE(mTextureTarget);
+      mTextureTarget = NULL;
+      mTexture = NULL;      
    }   
 
    if(mProfileName.isNotEmpty()){
@@ -392,13 +422,13 @@ void AudioTextureObject::prepRenderImage( SceneRenderState *state ){
 
    // do render to texture here
    // render to texture
-   if(mTextureTarget){   
+   if(mTexture){   
       static F32 texrot = 0.0f;
        
       GFXTransformSaver subsaver;
 
       mGFXTextureTarget = GFX->allocRenderToTextureTarget();        
-      mGFXTextureTarget->attachTexture(GFXTextureTarget::Color0,mTextureTarget->getTexture());
+      mGFXTextureTarget->attachTexture(GFXTextureTarget::Color0,mTexture);
 
       GFX->pushActiveRenderTarget();      
       GFX->setActiveRenderTarget(mGFXTextureTarget);
@@ -626,8 +656,9 @@ DefineEngineMethod( AudioTextureObject, postApply, void, (),,
 IMPLEMENT_CONOBJECT(NamedTexTargetObject);
 
 NamedTexTargetObject::NamedTexTargetObject(){
+   
 }
-NamedTexTargetObject::~NamedTexTargetObject(){
+NamedTexTargetObject::~NamedTexTargetObject(){   
 }
 
 void NamedTexTargetObject::initPersistFields(){
@@ -644,22 +675,33 @@ bool NamedTexTargetObject::onAdd(){
       return false;
 
    if(mTexTargetName.isEmpty()){  
-      Con::warnf("NamedTexTargetObject - targetName is not set, cannot register target.");
+      Con::warnf("NamedTexTargetObject::onAdd - targetName is not set, cannot register target.");
       return true;
    }    
    
    if(NamedTexTarget::find(mTexTargetName) != NULL){
-      Con::warnf("NamedTexTargetObject - targetName is already registered, cannot register target name: %s",mTexTargetName.c_str());         
+      Con::warnf("NamedTexTargetObject::onAdd - targetName is already registered, cannot register target name: %s",mTexTargetName.c_str());         
       return true;
    }
 
+   Con::warnf("NamedTexTargetObject::onAdd - Texture target registered: %s",mTexTargetName.c_str());
    mTexTarget.registerWithName(mTexTargetName);
+
+   /*
+   mTextureBuffer.set(512, 512, GFXFormatR8G8B8X8, &GFXDefaultRenderTargetProfile, "", 0); 
+   if(mTextureBuffer.getPointer()){
+      mTexTarget.setTexture(mTextureBuffer.getPointer());
+   }
+   */
 
    return true;
 }
 void NamedTexTargetObject::onRemove(){
    if(mTexTarget.isRegistered())
       mTexTarget.unregister();   
+
+   //if(mTextureBuffer.getPointer())
+   //   mTextureBuffer.free();
 
    Parent::onRemove();
 }

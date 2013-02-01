@@ -135,6 +135,9 @@ private:
    // actual texture target
    NamedTexTarget mTexTarget;
 
+   // texture buffer
+   GFXTexHandle mTextureBuffer;
+
 public:
    NamedTexTargetObject();
    virtual ~NamedTexTargetObject();
