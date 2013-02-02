@@ -12,6 +12,9 @@
 
 #include "gui/core/guiTypes.h"
 
+#undef INITGUID
+#include "loopbackAudio.h"
+
 // Object that can display sampled data on a texture
 class AudioTextureObject : public SceneObject
 {
@@ -26,15 +29,15 @@ private:
    };
 
    // buffers and pointers to texture
-   //    texture writing is double buffered
-   GFXTexHandle   mTextureBuffer1; 
-   GFXTexHandle   mTextureBuffer2;
+   GFXTexHandle   mTextureBuffer1;    
    GFXTexHandle   mWarningTexture;
-   GFXTextureObject* mTexture; // 
+   GFXTexHandle   mLineTexture;
+   GFXTextureObject* mTexture; 
 
    // texture reference name for use in materials
    //    eg: diffuseMap[0] = "#MyWebTexture";
    String mTextureName;  
+   String mLineTextureName;
 
    // texture target reg object
    NamedTexTarget* mTextureTarget; 
@@ -65,6 +68,9 @@ private:
    GuiControlProfile* mProfile;
    String mProfileName;
 
+   // source data object
+   LoopBackObject* mLoopBackObject;
+
 public:
    AudioTextureObject();
    virtual ~AudioTextureObject();
@@ -83,6 +89,7 @@ public:
 
    // custom drawing methods
    void drawTriLine( F32 x1, F32 y1, F32 x2, F32 y2, const ColorI &color, F32 thickness = 0.1f );
+   void drawTriLineTex( F32 x1, F32 y1, F32 x2, F32 y2, const ColorI &color, F32 thickness = 0.1f );
    void drawLine( F32 x1, F32 y1, F32 x2, F32 y2, const ColorI &color );
    void drawLine( F32 x1, F32 y1, F32 z1, F32 x2, F32 y2, F32 z2, const ColorI &color );
 
@@ -108,6 +115,9 @@ public:
 
    // render the bitmap
    void render( ObjectRenderInst *ri, SceneRenderState *state, BaseMatInstance *overrideMat );   
+
+   // set audio object
+   void setAudioObject(LoopBackObject* aObj){mLoopBackObject = aObj;};
 
    DECLARE_CONOBJECT(AudioTextureObject);
 };

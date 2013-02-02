@@ -43,6 +43,9 @@ void AudioTextureObject::initPersistFields(){
       "" );*/
    addField( "texture",      TypeRealString, Offset( mTextureName, AudioTextureObject ),
       "The target render texture." );
+   addField( "lineTexture",      TypeImageFilename, Offset( mLineTextureName, AudioTextureObject ),
+      "The target render texture." );
+
    endGroup( "Rendering" );
    addGroup("Control");   
    //addField("profile", TYPEID< GuiControlProfile >(), Offset(mProfile, AudioTextureObject));
@@ -69,7 +72,7 @@ bool AudioTextureObject::onAdd(){
    // setup material
    if( isClientObject() ){
       updateMaterial();
-   }
+   }      
 
    // Set up a 1x1x1 bounding box
    mObjBox.set( Point3F( -0.5f, -0.5f, -0.5f ),
@@ -95,6 +98,8 @@ void AudioTextureObject::onRemove(){
       mProfile->unregisterReference((SimObject**)&mProfile);
       mProfile = NULL;
    }
+
+   mLineTexture.free();
 
    Parent::onRemove();
 }
@@ -123,6 +128,7 @@ U32 AudioTextureObject::packUpdate( NetConnection *conn, U32 mask, BitStream *st
    if ( stream->writeFlag( mask & UpdateMask ) ){
       stream->write( mTextureName );
       stream->write( mProfileName );
+      stream->write( mLineTextureName );
    }
 
    return retMask;
@@ -144,6 +150,7 @@ void AudioTextureObject::unpackUpdate( NetConnection *conn, BitStream *stream ){
    {
       stream->read( &mTextureName );
       stream->read( &mProfileName );
+      stream->read( &mLineTextureName );
    
       if ( isProperlyAdded() )       
          updateMaterial();      
@@ -346,7 +353,11 @@ void AudioTextureObject::updateMaterial()
          mProfile->unregisterReference((SimObject**)&mProfile);
          mProfile = NULL;
       }
-   }   
+   } 
+
+   if(mLineTextureName.isNotEmpty()){
+      mLineTexture.set(mLineTextureName, &GFXDefaultStaticDiffuseProfile, String("Line Texture"));
+   }
 
    /*
    if( mMaterialName.isEmpty() )
@@ -433,10 +444,16 @@ void AudioTextureObject::prepRenderImage( SceneRenderState *state ){
          //GFX->setShader(mShader);
       } 
 
-      GFX->setTexture(0, NULL);            
+      // texture for line drawing
+      if(mLineTexture.isValid())
+         GFX->setTexture(0, mLineTexture);
+      else
+         GFX->setTexture(0, NULL);            
       
       F32 size = float(mTexture->getSize().x);
-      drawTriLine(0.0f,0.0f,0.5f,0.5f,ColorI(255,255,255),size*0.01f/size);      
+      //drawTriLineTex(0.0f,0.0f,0.5f,0.5f,ColorI(255,255,255),size*0.01f/size);      
+      drawTriLineTex(0.0f,0.0f,0.5f,0.5f,ColorI(255,255,255),0.01f);
+      //drawTriLineTex(0.0f,0.0f,0.5f,0.5f,ColorI(255,255,255),0.1f);
 
       if(mProfile)
          GFX->getDrawUtil()->drawText(mProfile->mFont,Point2I(0,0),"hello texture");
@@ -576,6 +593,73 @@ void AudioTextureObject::drawTriLine( F32 x1, F32 y1, F32 x2, F32 y2, const Colo
    GFX->setVertexBuffer( verts );
    GFX->drawPrimitive( GFXTriangleList, 0, 4 );   
 }
+
+void AudioTextureObject::drawTriLineTex( F32 x1, F32 y1, F32 x2, F32 y2, const ColorI &color, F32 thickness )
+{
+   GFXVertexBufferHandle<GFXVertexPCT> verts( GFX, 12, GFXBufferTypeVolatile );
+
+   F32 offset = thickness/2.0f;
+
+   F32 xdiff = x2-x1;
+   F32 ydiff = y2-y1;   
+
+   Point3F vect(xdiff,ydiff,0.0f);   
+   vect = mNormalize(vect); 
+   Point2F ovect(offset*vect.x,offset*vect.y);
+
+   verts.lock();
+   
+   verts[0].point.set( x1 - ovect.x, y1 - ovect.y, 0.0f );  // end point
+   verts[1].point.set( x1 - ovect.x, y1 + ovect.y, 0.0f );  // top
+   verts[2].point.set( x1 + ovect.x, y1 - ovect.y, 0.0f );  // bottom 
+
+   verts[3].point.set( x2 + ovect.x, y2 + ovect.y, 0.0f ); // end point
+   verts[4].point.set( x2 + ovect.x, y2 - ovect.y, 0.0f ); // bottom
+   verts[5].point.set( x2 - ovect.x, y2 + ovect.y, 0.0f ); // top  
+
+   verts[6].point.set( x1 - ovect.x, y1 + ovect.y, 0.0f );
+   verts[7].point.set( x2 - ovect.x, y2 + ovect.y, 0.0f );
+   verts[8].point.set( x2 + ovect.x, y2 - ovect.y, 0.0f );
+
+   verts[9].point.set( x2 + ovect.x, y2 - ovect.y, 0.0f );
+   verts[10].point.set( x1 + ovect.x, y1 - ovect.y, 0.0f );
+   verts[11].point.set( x1 - ovect.x, y1 + ovect.y, 0.0f );
+
+   verts[0].texCoord.set(0.010f, 0.029f);
+   verts[1].texCoord.set(0.041f, 0.010f);
+   verts[2].texCoord.set(0.041f, 0.050f);
+
+   verts[3].texCoord.set(0.010f, 0.029f);
+   verts[4].texCoord.set(0.041f, 0.050f);
+   verts[5].texCoord.set(0.041f, 0.010f);
+   
+   verts[6].texCoord.set(0.041f, 0.010f);
+   verts[7].texCoord.set(0.141f, 0.010f);
+   verts[8].texCoord.set(0.141f, 0.050f);
+
+   verts[9].texCoord.set(0.141f, 0.050f);
+   verts[10].texCoord.set(0.041f, 0.050f);
+   verts[11].texCoord.set(0.041f, 0.010f);
+
+   verts[0].color = color;
+   verts[1].color = color;
+   verts[2].color = color;
+   verts[3].color = color;
+   verts[4].color = color;
+   verts[5].color = color;
+   verts[6].color = color;
+   verts[7].color = color;
+   verts[8].color = color;
+   verts[9].color = color;
+   verts[10].color = color;
+   verts[11].color = color;
+
+   verts.unlock();
+
+   GFX->setVertexBuffer( verts );
+   GFX->drawPrimitive( GFXTriangleList, 0, 4 );   
+}
+
 void AudioTextureObject::drawLine( F32 x1, F32 y1, F32 x2, F32 y2, const ColorI &color )
 {
    drawLine( x1, y1, 0.0f, x2, y2, 0.0f, color );
@@ -604,6 +688,13 @@ DefineEngineMethod( AudioTextureObject, postApply, void, (),,
 {
 	object->inspectPostApply();
 }
+DefineEngineMethod( AudioTextureObject, setAudioObject, void, (SimObject* aObj),,
+   "Set audio object as source audio data.  Must be a LoopBackObject based object.\n")
+{
+   LoopBackObject* tObj = dynamic_cast<LoopBackObject*>(aObj);   
+   object->setAudioObject(tObj);	
+}
+
 
 IMPLEMENT_CONOBJECT(NamedTexTargetObject);
 

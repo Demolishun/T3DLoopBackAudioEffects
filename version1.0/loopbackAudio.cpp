@@ -25,6 +25,11 @@
 #include "kiss_fft/kiss_fftr.h"
 
 #include <D3dx9core.h>
+#define INITGUID
+#include <mmdeviceapi.h>
+#undef INITGUID
+
+AudioLoopbackThread *_activeLoopbackThread = NULL;
 
 /*
 The audio frequency data will be divided into freq bands from low to high.

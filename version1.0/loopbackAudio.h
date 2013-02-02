@@ -17,6 +17,7 @@
 #include "gui/worldEditor/gizmo.h"
 
 #include <mmsystem.h>
+#undef INITGUID
 #include <mmdeviceapi.h>
 #include <dsound.h>
 #include <Audioclient.h>
@@ -90,7 +91,7 @@ public:
    static void removeLoopbackObject(LoopBackObject* obj);   
 };
 
-AudioLoopbackThread *_activeLoopbackThread = NULL;
+//AudioLoopbackThread *_activeLoopbackThread = NULL;
 
 class LoopBackObject : public SimObject
 {
@@ -126,6 +127,15 @@ public:
    // placeholder for sub classes
    // objectSampleBufferMutex should be acquired before calling this function, see LoopBackObject::process()
    virtual void process_unique(){};
+
+   // get the processed FFT output divided up into bands
+   void getAudioOutput(Vector<F32>& retoutput){
+      MutexHandle mutex;
+      mutex.lock( &objectSampleBufferMutex, true );
+
+      retoutput.clear();
+      retoutput.set( objectSampleBuffer, objectSampleBufferSize*AUDIO_NUM_CHANNELS );            
+   }
    
    DECLARE_CONOBJECT(LoopBackObject);
 };
