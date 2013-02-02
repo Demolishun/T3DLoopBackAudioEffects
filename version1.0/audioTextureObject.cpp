@@ -692,7 +692,11 @@ DefineEngineMethod( AudioTextureObject, setAudioObject, void, (SimObject* aObj),
    "Set audio object as source audio data.  Must be a LoopBackObject based object.\n")
 {
    LoopBackObject* tObj = dynamic_cast<LoopBackObject*>(aObj);   
-   object->setAudioObject(tObj);	
+   if(!tObj && aObj){
+      Con::warnf("AudioTextureObject.setAudioObject - console method failed.  Object provided is not a LoopBackObject derived object.");
+   }else{
+      object->setAudioObject(tObj);	
+   }
 }
 
 
