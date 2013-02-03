@@ -12,6 +12,8 @@
 
 #include "gui/core/guiTypes.h"
 
+#include "ts/tsShape.h"
+
 #undef INITGUID
 #include "loopbackAudio.h"
 
@@ -38,6 +40,11 @@ private:
    //    eg: diffuseMap[0] = "#MyWebTexture";
    String mTextureName;  
    String mLineTextureName;
+
+   // shapes for rendering various primitives like lines
+   String mGeomShapeFileName;
+   Resource<TSShape> mGeomShapeResource;
+   TSShapeInstance*  mGeomShapeInstance;
 
    // texture target reg object
    NamedTexTarget* mTextureTarget; 

@@ -2,6 +2,7 @@
 
 #include "console/engineAPI.h"
 #include "core/stream/bitStream.h"
+#include "core/resourceManager.h"
 
 #include "math/mathIO.h"
 #include "math/mathUtils.h"
@@ -16,6 +17,7 @@
 
 #include "scene/sceneRenderState.h"
 #include "renderInstance/renderPassManager.h"
+#include "ts/tsShapeInstance.h"
 
 extern bool gEditingMission;
 
@@ -33,6 +35,8 @@ AudioTextureObject::AudioTextureObject(){
    mTexture = NULL; 
 
    mProfile = NULL;
+
+   mGeomShapeInstance = NULL;
 }
 AudioTextureObject::~AudioTextureObject(){   
 }
@@ -45,6 +49,8 @@ void AudioTextureObject::initPersistFields(){
       "The target render texture." );
    addField( "lineTexture",      TypeImageFilename, Offset( mLineTextureName, AudioTextureObject ),
       "The target render texture." );
+   addField( "geomShapeFilename",      TypeStringFilename, Offset( mGeomShapeFileName, AudioTextureObject ),
+      "The path to the geometry DTS shape file." );
 
    endGroup( "Rendering" );
    addGroup("Control");   
@@ -101,6 +107,10 @@ void AudioTextureObject::onRemove(){
 
    mLineTexture.free();
 
+   // Remove our TSShapeInstance
+   if ( mGeomShapeInstance )
+      SAFE_DELETE( mGeomShapeInstance );
+
    Parent::onRemove();
 }
 
@@ -129,6 +139,7 @@ U32 AudioTextureObject::packUpdate( NetConnection *conn, U32 mask, BitStream *st
       stream->write( mTextureName );
       stream->write( mProfileName );
       stream->write( mLineTextureName );
+      stream->write( mGeomShapeFileName );
    }
 
    return retMask;
@@ -151,6 +162,7 @@ void AudioTextureObject::unpackUpdate( NetConnection *conn, BitStream *stream ){
       stream->read( &mTextureName );
       stream->read( &mProfileName );
       stream->read( &mLineTextureName );
+      stream->read( &mGeomShapeFileName );
    
       if ( isProperlyAdded() )       
          updateMaterial();      
@@ -359,6 +371,38 @@ void AudioTextureObject::updateMaterial()
       mLineTexture.set(mLineTextureName, &GFXDefaultStaticDiffuseProfile, String("Line Texture"));
    }
 
+   if(!mGeomShapeFileName.isEmpty()){
+      // if name does not match
+      if (mGeomShapeInstance && !mGeomShapeFileName.equal( mGeomShapeResource.getPath().getFullPath(), String::NoCase )){
+         // get rid of old shape
+         if ( mGeomShapeInstance )
+            SAFE_DELETE( mGeomShapeInstance );
+         mGeomShapeResource = NULL;
+      }
+      if (!mGeomShapeInstance){
+         // Attempt to get the resource from the ResourceManager
+         mGeomShapeResource = ResourceManager::get().load( mGeomShapeFileName );
+
+         if (mGeomShapeResource){
+            // Attempt to preload the Materials for this shape
+            if ( mGeomShapeResource->preloadMaterialList(mGeomShapeResource.getPath())){
+               // Create the TSShapeInstance
+               mGeomShapeInstance = new TSShapeInstance( mGeomShapeResource, isClientObject() );
+            }else{
+               mGeomShapeResource = NULL;               
+               //Con::errorf( "AudioTextureObject::updateMaterial() - No preloadMaterialList: %s", mGeomShapeFileName.c_str() );
+            }
+
+            if(mGeomShapeInstance){
+               mGeomShapeInstance->listMeshes(String("All"));              
+            }
+         }else{
+            Con::errorf( "AudioTextureObject::updateMaterial() - Unable to load shape: %s", mGeomShapeFileName.c_str() );
+            return;
+         }
+      }      
+   }
+
    /*
    if( mMaterialName.isEmpty() )
       return;
@@ -452,8 +496,8 @@ void AudioTextureObject::prepRenderImage( SceneRenderState *state ){
       
       F32 size = float(mTexture->getSize().x);
       //drawTriLineTex(0.0f,0.0f,0.5f,0.5f,ColorI(255,255,255),size*0.01f/size);      
-      drawTriLineTex(0.0f,0.0f,0.5f,0.5f,ColorI(255,255,255),0.01f);
-      //drawTriLineTex(0.0f,0.0f,0.5f,0.5f,ColorI(255,255,255),0.1f);
+      //drawTriLineTex(0.0f,0.0f,0.5f,0.5f,ColorI(255,255,255),0.01f);
+      drawTriLineTex(0.0f,0.0f,0.5f,0.5f,ColorI(255,255,255),0.1f);
 
       if(mProfile)
          GFX->getDrawUtil()->drawText(mProfile->mFont,Point2I(0,0),"hello texture");
