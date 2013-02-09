@@ -291,6 +291,10 @@ void AudioTextureObject::createGeometry(){
    desc.cullMode = GFXCullCW;
    mReflectSB = GFX->createStateBlock( desc );   
 
+   desc.cullDefined = true;
+   desc.cullMode = GFXCullNone;
+   mNoCullSB = GFX->createStateBlock( desc ); 
+
    // get shader
    if(1){
       ShaderData *shaderData;
@@ -392,7 +396,8 @@ void AudioTextureObject::updateMaterial()
                mGeomShapeResource = NULL;               
                //Con::errorf( "AudioTextureObject::updateMaterial() - No preloadMaterialList: %s", mGeomShapeFileName.c_str() );
             }
-
+            
+            // testing: list meshes in object
             if(mGeomShapeInstance){
                mGeomShapeInstance->listMeshes(String("All"));              
             }
@@ -497,7 +502,13 @@ void AudioTextureObject::prepRenderImage( SceneRenderState *state ){
       F32 size = float(mTexture->getSize().x);
       //drawTriLineTex(0.0f,0.0f,0.5f,0.5f,ColorI(255,255,255),size*0.01f/size);      
       //drawTriLineTex(0.0f,0.0f,0.5f,0.5f,ColorI(255,255,255),0.01f);
-      drawTriLineTex(0.0f,0.0f,0.5f,0.5f,ColorI(255,255,255),0.1f);
+      //GFX->setStateBlock(mNoCullSB);
+      F32 rad = mDegToRad(texrot);
+      F32 x = mCos(texrot);
+      F32 y = mSin(texrot);
+      drawTriLineTex(0.0f,0.0f,x*0.5f,y*0.5f,ColorI(255,255,255),0.1f);
+
+      //GFX->setStateBlock(mReflectSB);      
 
       if(mProfile)
          GFX->getDrawUtil()->drawText(mProfile->mFont,Point2I(0,0),"hello texture");
@@ -640,7 +651,7 @@ void AudioTextureObject::drawTriLine( F32 x1, F32 y1, F32 x2, F32 y2, const Colo
 
 void AudioTextureObject::drawTriLineTex( F32 x1, F32 y1, F32 x2, F32 y2, const ColorI &color, F32 thickness )
 {
-   GFXVertexBufferHandle<GFXVertexPCT> verts( GFX, 12, GFXBufferTypeVolatile );
+   GFXVertexBufferHandle<GFXVertexPCT> verts( GFX, 8, GFXBufferTypeVolatile );
 
    F32 offset = thickness/2.0f;
 
@@ -648,11 +659,57 @@ void AudioTextureObject::drawTriLineTex( F32 x1, F32 y1, F32 x2, F32 y2, const C
    F32 ydiff = y2-y1;   
 
    Point3F vect(xdiff,ydiff,0.0f);   
-   vect = mNormalize(vect); 
-   Point2F ovect(offset*vect.x,offset*vect.y);
+   vect = mNormalize(vect);    
+   Point2F ovect(offset*vect.x,offset*vect.y);   
 
    verts.lock();
+
+   verts[0].point.set( x1 - ovect.x*2 + ovect.y, y1 - ovect.y*2 - ovect.x, 0.0f ); // bottom
+   verts[1].point.set( x1 - ovect.x*2 - ovect.y, y1 - ovect.y*2 + ovect.x, 0.0f ); // top
+   verts[2].point.set( x1 + ovect.y, y1 - ovect.x, 0.0f ); // bottom r
+   verts[3].point.set( x1 - ovect.y, y1 + ovect.x, 0.0f ); // top r
+   verts[4].point.set( x2 + ovect.y, y2 - ovect.x, 0.0f ); // bottom r
+   verts[5].point.set( x2 - ovect.y, y2 + ovect.x, 0.0f ); // top r
+   verts[6].point.set( x2 + ovect.x*2 + ovect.y, y2 + ovect.y*2 - ovect.x, 0.0f ); // bottom
+   verts[7].point.set( x2 + ovect.x*2 - ovect.y, y2 + ovect.y*2 + ovect.x, 0.0f ); // top
+
+   /*
+   for(U32 i = 0; i < 4; i++){
+      Con::printf("point: %d:%.4f,%.4f,%.4f",i,verts[i].point.x,verts[i].point.y,verts[i].point.z);
+   }
+   */
+
+   /*
+      Texture coords:
+      0.0625,     0.125
+      0.0625,     0.0
+      0.125,   0.125
+      0.125,   0.0
+      0.250,   0.125
+      0.250,   0.0
+      0.3125,   0.125
+      0.3125,   0.0
+   */
+
+   verts[0].texCoord.set(0.0f, 0.125f);
+   verts[1].texCoord.set(0.0f, 0.0f);
+   verts[2].texCoord.set(0.125f, 0.125f);
+   verts[3].texCoord.set(0.125f, 0.0f);   
+   verts[4].texCoord.set(0.250f, 0.125f);   
+   verts[5].texCoord.set(0.250f, 0.0f);
+   verts[6].texCoord.set(0.375f, 0.125f);
+   verts[7].texCoord.set(0.375f, 0.0f);   
+
+   verts[0].color = color;
+   verts[1].color = color;
+   verts[2].color = color;
+   verts[3].color = color;
+   verts[4].color = color;
+   verts[5].color = color;
+   verts[6].color = color;
+   verts[7].color = color;
    
+   /*
    verts[0].point.set( x1 - ovect.x, y1 - ovect.y, 0.0f );  // end point
    verts[1].point.set( x1 - ovect.x, y1 + ovect.y, 0.0f );  // top
    verts[2].point.set( x1 + ovect.x, y1 - ovect.y, 0.0f );  // bottom 
@@ -697,11 +754,123 @@ void AudioTextureObject::drawTriLineTex( F32 x1, F32 y1, F32 x2, F32 y2, const C
    verts[9].color = color;
    verts[10].color = color;
    verts[11].color = color;
+   */
 
    verts.unlock();
 
+   //GFX->setTexture(0, NULL);
+
    GFX->setVertexBuffer( verts );
-   GFX->drawPrimitive( GFXTriangleList, 0, 4 );   
+   //GFX->drawPrimitive( GFXTriangleList, 0, 2 );   
+   GFX->drawPrimitive( GFXTriangleStrip, 0, 6 );
+}
+
+TSMesh* AudioTextureObject::findShape(String shapeName){
+   for ( U32 i = 0; i < mGeomShapeInstance->mMeshObjects.size(); i++ ){
+      const TSShapeInstance::MeshObjectInstance &mesh = mGeomShapeInstance->mMeshObjects[i];
+      if(shapeName.equal(mGeomShapeInstance->getShape()->getMeshName(i)))        
+         return mesh.getMesh(0);
+   }   
+
+   return NULL;
+}
+
+void AudioTextureObject::drawLineShape( F32 x1, F32 y1, F32 x2, F32 y2, const ColorI &color, F32 thickness)
+{
+   static U32 err = 0;
+   static U32 last = 0;
+
+   // check for meshes
+   if(!mGeomShapeInstance)
+      return;
+   TSShape* tmpShape = mGeomShapeInstance->getShape();
+   TSMesh* lineEnd=NULL;
+   TSMesh* lineSegment=NULL;
+
+   mGeomShapeInstance->setCurrentDetail(0);
+   if(tmpShape){
+      lineEnd = findShape(String("LineEnd0"));       
+      lineSegment = findShape(String("LineEnd0"));           
+   }else{     
+      //Con::warnf("no shape"); 
+      return;
+   }
+
+   if(!lineEnd || !lineSegment){
+      //Con::warnf("no meshes"); 
+      err = -1;
+      //return;
+   }else{
+      err = 1;
+   }
+
+   if(err == -1 && last != err){
+      last = err;
+      Con::warnf("no meshes");       
+   }
+
+   if(err < 0)
+      return;
+
+   if(err == 1 && last != err){
+      last = err;
+      Con::warnf("meshes found"); 
+   }
+
+   TSVertexBufferHandle instanceVB;
+   GFXPrimitiveBufferHandle instancePB;
+
+   //mGeomShapeInstance->mMaterialList   
+
+   lineEnd->createVBIB();   
+   //lineEnd->convertToAlignedMeshData();
+   //lineEnd->assemble(false);
+   //lineEnd->mVertexFormat
+   //lineEnd->render(instanceVB, instancePB);
+
+   //lineEnd->primitives
+
+   //TSSkinMesh* sLineEnd = dynamic_cast<TSSkinMesh*>(lineEnd);
+   //if(sLineEnd){
+   //   Con::printf("Is skin mesh");
+   //}
+   
+
+   U32 totalverts = lineEnd->mNumVerts;
+   
+   GFXVertexBufferHandle<GFXVertexPCT> verts( GFX, totalverts, GFXBufferTypeVolatile );
+
+   //Con::warnf("num verts %d",verts->mNumVerts);   
+
+   F32 offset = thickness/2.0f;
+
+   F32 xdiff = x2-x1;
+   F32 ydiff = y2-y1;   
+
+   Point3F vect(xdiff,ydiff,0.0f);   
+   vect = mNormalize(vect); 
+   Point2F ovect(offset*vect.x,offset*vect.y);   
+
+   verts.lock();
+   
+   U32 ti;
+   Point3F tpoint;
+   for(U32 i = 0; i < lineEnd->mNumVerts; i++){
+      ti = lineEnd->indices[i];
+      verts[i].point = lineEnd->mVertexData[ti].vert()*0.1f+Point3F(x1,y1,0.0f); 
+      //tpoint = lineEnd->mVertexData[i].vert();     
+      Con::printf("point: %d:%.4f,%.4f,%.4f",i,tpoint.x,tpoint.y,tpoint.z);
+      Con::printf("point: %d:%.4f,%.4f,%.4f",i,verts[i].point.x,verts[i].point.y,verts[i].point.z);
+      verts[i].color = color;
+      //verts[i].color = lineEnd->mVertexData[i].color();
+      verts[i].texCoord = lineEnd->mVertexData[ti].tvert();
+   }
+
+   verts.unlock();
+
+   GFX->setVertexBuffer( verts );    
+   GFX->drawPrimitive( GFXTriangleStrip, 0, 2 );      
+   
 }
 
 void AudioTextureObject::drawLine( F32 x1, F32 y1, F32 x2, F32 y2, const ColorI &color )

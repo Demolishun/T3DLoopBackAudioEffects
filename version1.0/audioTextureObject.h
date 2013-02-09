@@ -39,6 +39,8 @@ private:
    // texture reference name for use in materials
    //    eg: diffuseMap[0] = "#MyWebTexture";
    String mTextureName;  
+
+   // this will be superceeded by mGeomShapeFileName
    String mLineTextureName;
 
    // shapes for rendering various primitives like lines
@@ -63,6 +65,7 @@ private:
    // The handles for our StateBlocks
    GFXStateBlockRef mNormalSB;
    GFXStateBlockRef mReflectSB;
+   GFXStateBlockRef mNoCullSB;
 
    // The GFX vertex and primitive buffers
    GFXVertexBufferHandle< VertexType > mVertexBuffer;
@@ -96,7 +99,8 @@ public:
 
    // custom drawing methods
    void drawTriLine( F32 x1, F32 y1, F32 x2, F32 y2, const ColorI &color, F32 thickness = 0.1f );
-   void drawTriLineTex( F32 x1, F32 y1, F32 x2, F32 y2, const ColorI &color, F32 thickness = 0.1f );
+   void drawTriLineTex( F32 x1, F32 y1, F32 x2, F32 y2, const ColorI &color, F32 thickness = 0.1f );   
+   void drawLineShape( F32 x1, F32 y1, F32 x2, F32 y2, const ColorI &color, F32 thickness = 0.1f );
    void drawLine( F32 x1, F32 y1, F32 x2, F32 y2, const ColorI &color );
    void drawLine( F32 x1, F32 y1, F32 z1, F32 x2, F32 y2, F32 z2, const ColorI &color );
 
@@ -127,6 +131,9 @@ public:
    void setAudioObject(LoopBackObject* aObj){mLoopBackObject = aObj;};
 
    DECLARE_CONOBJECT(AudioTextureObject);
+
+private:
+   TSMesh* findShape(String shapeName);
 };
 
 // Named Texture Target Object
