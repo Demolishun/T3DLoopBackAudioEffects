@@ -540,7 +540,7 @@ void AudioTextureObject::prepRenderImage( SceneRenderState *state ){
       drawTriLineTex(0.0f,0.0f,x*0.5f,y*0.5f,ColorI(255,255,255),0.1f);
 
       static Vector<Point2F> lineList;
-      U32 maxPoints = 1024;
+      U32 maxPoints = 32;
       if(lineList.size() != maxPoints){
          lineList.fill(Point2F(0.0,0.0));
          lineList.setSize(maxPoints);         
@@ -551,10 +551,10 @@ void AudioTextureObject::prepRenderImage( SceneRenderState *state ){
           
       for(U32 i=0; i < maxPoints; i++){   
          //F32 sinx = mSin(sinval*F32(i))/2.0f;
-         lineList[i].set(-1.0 + F32(i)*xinc,lowPassFilter(mRandF(-1.0f,1.0f),lineList[i].y,0.1f));
+         lineList[i].set(-1.0 + F32(i)*xinc,lowPassFilter(mRandF(-1.0f,1.0f),lineList[i].y,0.05f));
          //Con::printf("%.4f,%.4f",lineList[i].x,lineList[i].y);
       }
-      drawTriLineTexN(lineList,ColorI(255,255,255),0.01f);
+      drawTriLineTexN(lineList,ColorI(255,255,255),0.05f);
 
       //GFX->setStateBlock(mReflectSB);      
 
@@ -751,7 +751,7 @@ void AudioTextureObject::drawTriLineTexN( Vector<Point2F> &points, const ColorI 
    if(!lines)
       return;
 
-   U32 numLineVerts = 10;
+   U32 numLineVerts = 10;  // each line needs 8, but we need 2 per to have linking degenerate tris
    U32 numVerts = lines * numLineVerts; // calculate the number of verts
   
    GFXVertexBufferHandle<GFXVertexPCT> verts( GFX, numVerts, GFXBufferTypeVolatile );
@@ -783,16 +783,16 @@ void AudioTextureObject::drawTriLineTexN( Vector<Point2F> &points, const ColorI 
       verts[5+voff].point.set( x2 - ovect.y, y2 + ovect.x, 0.0f ); // top r
       verts[6+voff].point.set( x2 + ovect.x*2 + ovect.y, y2 + ovect.y*2 - ovect.x, 0.0f ); // bottom
       verts[7+voff].point.set( x2 + ovect.x*2 - ovect.y, y2 + ovect.y*2 + ovect.x, 0.0f ); // top      
-      verts[8+voff].point.set( verts[7+voff].point ); // eat this vert
-      verts[9+voff].point.set( verts[7+voff].point ); // eat this vert      
+      verts[8+voff].point.set( verts[7+voff].point ); // eat this vert, degenerate triangle
+      verts[9+voff].point.set( verts[7+voff].point ); // eat this vert, degenerate triangle
 
       // grab uv coords
       U32 uvoffset = uvIndex*8; 
       for(U32 i = 0; i < 8; i++){
          verts[i+voff].texCoord.set(mUVCoords[i+uvoffset].x,mUVCoords[i+uvoffset].y);         
       } 
-      verts[8+voff].texCoord.set(verts[7+voff].texCoord.x,verts[7+voff].texCoord.y);
-      verts[9+voff].texCoord.set(verts[7+voff].texCoord.x,verts[7+voff].texCoord.y);
+      verts[8+voff].texCoord.set(verts[7+voff].texCoord.x,verts[7+voff].texCoord.y);  // make sure textures coords are valid
+      verts[9+voff].texCoord.set(verts[7+voff].texCoord.x,verts[7+voff].texCoord.y);  // make sure textures coords are valid
 
       for(U32 i = 0; i < numLineVerts; i++){
          verts[i+voff].color = color;
@@ -800,15 +800,15 @@ void AudioTextureObject::drawTriLineTexN( Vector<Point2F> &points, const ColorI 
 
       if(i >= 1){
          // fixup this vert
-         verts[-1+voff].point.set(verts[0+voff].point);  
-         verts[-1+voff].texCoord.set(verts[0+voff].texCoord.x,verts[0+voff].texCoord.y);
+         verts[-1+voff].point.set(verts[0+voff].point);  // eat this vert, degenerate triangle
+         verts[-1+voff].texCoord.set(verts[0+voff].texCoord.x,verts[0+voff].texCoord.y);  // make sure textures coords are valid
       }
    }
    
    verts.unlock();
 
    GFX->setVertexBuffer( verts );   
-   GFX->drawPrimitive( GFXTriangleStrip, 0, numVerts-2 );
+   GFX->drawPrimitive( GFXTriangleStrip, 0, numVerts-4 );  // clip off 2 unused vertexes
 }
 
 TSMesh* AudioTextureObject::findShape(String shapeName){
