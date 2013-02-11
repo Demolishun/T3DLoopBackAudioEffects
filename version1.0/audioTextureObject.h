@@ -34,6 +34,7 @@ private:
    GFXTexHandle   mTextureBuffer1;    
    GFXTexHandle   mWarningTexture;
    GFXTexHandle   mLineTexture;
+   Vector<Point2F> mUVCoords;
    GFXTextureObject* mTexture; 
 
    // texture reference name for use in materials
@@ -99,7 +100,8 @@ public:
 
    // custom drawing methods
    void drawTriLine( F32 x1, F32 y1, F32 x2, F32 y2, const ColorI &color, F32 thickness = 0.1f );
-   void drawTriLineTex( F32 x1, F32 y1, F32 x2, F32 y2, const ColorI &color, F32 thickness = 0.1f );   
+   void drawTriLineTex( F32 x1, F32 y1, F32 x2, F32 y2, const ColorI &color, F32 thickness = 0.1f, U32 uvIndex=0 );   
+   void drawTriLineTexN( Vector<Point2F> &points, const ColorI &color, F32 thickness, U32 uvIndex=0 );
    void drawLineShape( F32 x1, F32 y1, F32 x2, F32 y2, const ColorI &color, F32 thickness = 0.1f );
    void drawLine( F32 x1, F32 y1, F32 x2, F32 y2, const ColorI &color );
    void drawLine( F32 x1, F32 y1, F32 z1, F32 x2, F32 y2, F32 z2, const ColorI &color );

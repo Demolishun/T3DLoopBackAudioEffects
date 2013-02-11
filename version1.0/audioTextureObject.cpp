@@ -37,6 +37,37 @@ AudioTextureObject::AudioTextureObject(){
    mProfile = NULL;
 
    mGeomShapeInstance = NULL;
+
+   // generate UV coords for line drawing
+   /*
+      Texture coords:
+      0.0,     0.125
+      0.0,     0.0
+      0.125,   0.125
+      0.125,   0.0
+      0.250,   0.125
+      0.250,   0.0
+      0.375,   0.125
+      0.375,   0.0
+   */   
+   mUVCoords.setSize(64);
+   F32 inc = 1.0f/8.0f;
+   for(U32 i=0; i < 8; i++){
+      F32 fi = F32(i>>1);
+      F32 yoff = i%2 ? 0.0f : inc;
+      mUVCoords[i].set(fi*inc, yoff);
+   }
+   for(U32 i=8; i < 64; i++){
+      //U32 yflag = i%2 ? 1 : 0;
+      //F32 yoff = F32((i>>3)+yflag)*inc;
+      F32 yoff = F32(i>>3)*inc+mUVCoords[i%8].y;
+      mUVCoords[i].set(mUVCoords[i%8].x, yoff);
+   }
+   /*
+   for(U32 i=0; i < 64; i++){
+      Con::warnf("%.4f,%.4f",mUVCoords[i].x,mUVCoords[i].y);
+   }
+   */
 }
 AudioTextureObject::~AudioTextureObject(){   
 }
@@ -508,6 +539,23 @@ void AudioTextureObject::prepRenderImage( SceneRenderState *state ){
       F32 y = mSin(texrot);
       drawTriLineTex(0.0f,0.0f,x*0.5f,y*0.5f,ColorI(255,255,255),0.1f);
 
+      static Vector<Point2F> lineList;
+      U32 maxPoints = 1024;
+      if(lineList.size() != maxPoints){
+         lineList.fill(Point2F(0.0,0.0));
+         lineList.setSize(maxPoints);         
+      }
+                
+      F32 xinc = (1.0f/F32(maxPoints-1))*2.0f;  
+      F32 sinval = 1.0f/F32(maxPoints-1) * 360.0f;      
+          
+      for(U32 i=0; i < maxPoints; i++){   
+         //F32 sinx = mSin(sinval*F32(i))/2.0f;
+         lineList[i].set(-1.0 + F32(i)*xinc,lowPassFilter(mRandF(-1.0f,1.0f),lineList[i].y,0.1f));
+         //Con::printf("%.4f,%.4f",lineList[i].x,lineList[i].y);
+      }
+      drawTriLineTexN(lineList,ColorI(255,255,255),0.01f);
+
       //GFX->setStateBlock(mReflectSB);      
 
       if(mProfile)
@@ -649,9 +697,10 @@ void AudioTextureObject::drawTriLine( F32 x1, F32 y1, F32 x2, F32 y2, const Colo
    GFX->drawPrimitive( GFXTriangleList, 0, 4 );   
 }
 
-void AudioTextureObject::drawTriLineTex( F32 x1, F32 y1, F32 x2, F32 y2, const ColorI &color, F32 thickness )
+void AudioTextureObject::drawTriLineTex( F32 x1, F32 y1, F32 x2, F32 y2, const ColorI &color, F32 thickness, U32 uvIndex )
 {
-   GFXVertexBufferHandle<GFXVertexPCT> verts( GFX, 8, GFXBufferTypeVolatile );
+   U32 numVerts = 8;
+   GFXVertexBufferHandle<GFXVertexPCT> verts( GFX, numVerts, GFXBufferTypeVolatile );
 
    F32 offset = thickness/2.0f;
 
@@ -664,6 +713,7 @@ void AudioTextureObject::drawTriLineTex( F32 x1, F32 y1, F32 x2, F32 y2, const C
 
    verts.lock();
 
+   // note: in a vector swapping x and y and negating one will produce a perpendicular vector
    verts[0].point.set( x1 - ovect.x*2 + ovect.y, y1 - ovect.y*2 - ovect.x, 0.0f ); // bottom
    verts[1].point.set( x1 - ovect.x*2 - ovect.y, y1 - ovect.y*2 + ovect.x, 0.0f ); // top
    verts[2].point.set( x1 + ovect.y, y1 - ovect.x, 0.0f ); // bottom r
@@ -677,92 +727,88 @@ void AudioTextureObject::drawTriLineTex( F32 x1, F32 y1, F32 x2, F32 y2, const C
    for(U32 i = 0; i < 4; i++){
       Con::printf("point: %d:%.4f,%.4f,%.4f",i,verts[i].point.x,verts[i].point.y,verts[i].point.z);
    }
-   */
+   */   
 
-   /*
-      Texture coords:
-      0.0625,     0.125
-      0.0625,     0.0
-      0.125,   0.125
-      0.125,   0.0
-      0.250,   0.125
-      0.250,   0.0
-      0.3125,   0.125
-      0.3125,   0.0
-   */
+   // grab uv coords
+   U32 uvoffset = uvIndex*8; 
+   for(U32 i = 0; i < numVerts; i++){
+      verts[i].texCoord.set(mUVCoords[i+uvoffset].x,mUVCoords[i+uvoffset].y);
+   }   
 
-   verts[0].texCoord.set(0.0f, 0.125f);
-   verts[1].texCoord.set(0.0f, 0.0f);
-   verts[2].texCoord.set(0.125f, 0.125f);
-   verts[3].texCoord.set(0.125f, 0.0f);   
-   verts[4].texCoord.set(0.250f, 0.125f);   
-   verts[5].texCoord.set(0.250f, 0.0f);
-   verts[6].texCoord.set(0.375f, 0.125f);
-   verts[7].texCoord.set(0.375f, 0.0f);   
-
-   verts[0].color = color;
-   verts[1].color = color;
-   verts[2].color = color;
-   verts[3].color = color;
-   verts[4].color = color;
-   verts[5].color = color;
-   verts[6].color = color;
-   verts[7].color = color;
+   for(U32 i = 0; i < numVerts; i++){
+      verts[i].color = color;
+   }
    
-   /*
-   verts[0].point.set( x1 - ovect.x, y1 - ovect.y, 0.0f );  // end point
-   verts[1].point.set( x1 - ovect.x, y1 + ovect.y, 0.0f );  // top
-   verts[2].point.set( x1 + ovect.x, y1 - ovect.y, 0.0f );  // bottom 
-
-   verts[3].point.set( x2 + ovect.x, y2 + ovect.y, 0.0f ); // end point
-   verts[4].point.set( x2 + ovect.x, y2 - ovect.y, 0.0f ); // bottom
-   verts[5].point.set( x2 - ovect.x, y2 + ovect.y, 0.0f ); // top  
-
-   verts[6].point.set( x1 - ovect.x, y1 + ovect.y, 0.0f );
-   verts[7].point.set( x2 - ovect.x, y2 + ovect.y, 0.0f );
-   verts[8].point.set( x2 + ovect.x, y2 - ovect.y, 0.0f );
-
-   verts[9].point.set( x2 + ovect.x, y2 - ovect.y, 0.0f );
-   verts[10].point.set( x1 + ovect.x, y1 - ovect.y, 0.0f );
-   verts[11].point.set( x1 - ovect.x, y1 + ovect.y, 0.0f );
-
-   verts[0].texCoord.set(0.010f, 0.029f);
-   verts[1].texCoord.set(0.041f, 0.010f);
-   verts[2].texCoord.set(0.041f, 0.050f);
-
-   verts[3].texCoord.set(0.010f, 0.029f);
-   verts[4].texCoord.set(0.041f, 0.050f);
-   verts[5].texCoord.set(0.041f, 0.010f);
-   
-   verts[6].texCoord.set(0.041f, 0.010f);
-   verts[7].texCoord.set(0.141f, 0.010f);
-   verts[8].texCoord.set(0.141f, 0.050f);
-
-   verts[9].texCoord.set(0.141f, 0.050f);
-   verts[10].texCoord.set(0.041f, 0.050f);
-   verts[11].texCoord.set(0.041f, 0.010f);
-
-   verts[0].color = color;
-   verts[1].color = color;
-   verts[2].color = color;
-   verts[3].color = color;
-   verts[4].color = color;
-   verts[5].color = color;
-   verts[6].color = color;
-   verts[7].color = color;
-   verts[8].color = color;
-   verts[9].color = color;
-   verts[10].color = color;
-   verts[11].color = color;
-   */
-
    verts.unlock();
 
-   //GFX->setTexture(0, NULL);
-
-   GFX->setVertexBuffer( verts );
-   //GFX->drawPrimitive( GFXTriangleList, 0, 2 );   
+   GFX->setVertexBuffer( verts );   
    GFX->drawPrimitive( GFXTriangleStrip, 0, 6 );
+}
+
+void AudioTextureObject::drawTriLineTexN( Vector<Point2F> &points, const ColorI &color, F32 thickness, U32 uvIndex )
+{
+   U32 lines = points.size() - 1;
+   if(!lines)
+      return;
+
+   U32 numLineVerts = 10;
+   U32 numVerts = lines * numLineVerts; // calculate the number of verts
+  
+   GFXVertexBufferHandle<GFXVertexPCT> verts( GFX, numVerts, GFXBufferTypeVolatile );
+
+   F32 offset = thickness/2.0f;
+
+   verts.lock();
+      
+   for(U32 i=0; i < lines; i++){
+      F32 x1,x2,y1,y2;
+      x1 = points[i].x;
+      x2 = points[i+1].x;
+      y1 = points[i].y;
+      y2 = points[i+1].y;
+
+      F32 xdiff = x2-x1;
+      F32 ydiff = y2-y1;
+
+      Point3F vect(xdiff,ydiff,0.0f);   
+      vect = mNormalize(vect);    
+      Point2F ovect(offset*vect.x,offset*vect.y);
+
+      U32 voff = i*numLineVerts;                  
+      verts[0+voff].point.set( x1 - ovect.x*2 + ovect.y, y1 - ovect.y*2 - ovect.x, 0.0f ); // bottom
+      verts[1+voff].point.set( x1 - ovect.x*2 - ovect.y, y1 - ovect.y*2 + ovect.x, 0.0f ); // top
+      verts[2+voff].point.set( x1 + ovect.y, y1 - ovect.x, 0.0f ); // bottom r
+      verts[3+voff].point.set( x1 - ovect.y, y1 + ovect.x, 0.0f ); // top r
+      verts[4+voff].point.set( x2 + ovect.y, y2 - ovect.x, 0.0f ); // bottom r
+      verts[5+voff].point.set( x2 - ovect.y, y2 + ovect.x, 0.0f ); // top r
+      verts[6+voff].point.set( x2 + ovect.x*2 + ovect.y, y2 + ovect.y*2 - ovect.x, 0.0f ); // bottom
+      verts[7+voff].point.set( x2 + ovect.x*2 - ovect.y, y2 + ovect.y*2 + ovect.x, 0.0f ); // top      
+      verts[8+voff].point.set( verts[7+voff].point ); // eat this vert
+      verts[9+voff].point.set( verts[7+voff].point ); // eat this vert      
+
+      // grab uv coords
+      U32 uvoffset = uvIndex*8; 
+      for(U32 i = 0; i < 8; i++){
+         verts[i+voff].texCoord.set(mUVCoords[i+uvoffset].x,mUVCoords[i+uvoffset].y);         
+      } 
+      verts[8+voff].texCoord.set(verts[7+voff].texCoord.x,verts[7+voff].texCoord.y);
+      verts[9+voff].texCoord.set(verts[7+voff].texCoord.x,verts[7+voff].texCoord.y);
+
+      for(U32 i = 0; i < numLineVerts; i++){
+         verts[i+voff].color = color;
+      }      
+
+      if(i >= 1){
+         // fixup this vert
+         verts[-1+voff].point.set(verts[0+voff].point);  
+         verts[-1+voff].texCoord.set(verts[0+voff].texCoord.x,verts[0+voff].texCoord.y);
+      }
+   }
+   
+   verts.unlock();
+
+   GFX->setVertexBuffer( verts );   
+   GFX->drawPrimitive( GFXTriangleStrip, 0, numVerts-2 );
 }
 
 TSMesh* AudioTextureObject::findShape(String shapeName){
