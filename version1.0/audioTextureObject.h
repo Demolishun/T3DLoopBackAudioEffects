@@ -46,8 +46,8 @@ private:
 
    // shapes for rendering various primitives like lines
    String mGeomShapeFileName;
-   Resource<TSShape> mGeomShapeResource;
-   TSShapeInstance*  mGeomShapeInstance;
+   //Resource<TSShape> mGeomShapeResource;
+   //TSShapeInstance*  mGeomShapeInstance;
 
    // texture target reg object
    NamedTexTarget* mTextureTarget; 
@@ -158,6 +158,7 @@ private:
 
    // The size in pixels of the backing texture
    S32 mTexSize;
+   Point2I mTexDims;
 
 public:
    NamedTexTargetObject();

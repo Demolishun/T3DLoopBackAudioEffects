@@ -36,7 +36,7 @@ AudioTextureObject::AudioTextureObject(){
 
    mProfile = NULL;
 
-   mGeomShapeInstance = NULL;
+   //mGeomShapeInstance = NULL;
 
    // generate UV coords for line drawing
    /*
@@ -139,8 +139,8 @@ void AudioTextureObject::onRemove(){
    mLineTexture.free();
 
    // Remove our TSShapeInstance
-   if ( mGeomShapeInstance )
-      SAFE_DELETE( mGeomShapeInstance );
+   //if ( mGeomShapeInstance )
+   //   SAFE_DELETE( mGeomShapeInstance );
 
    Parent::onRemove();
 }
@@ -170,7 +170,8 @@ U32 AudioTextureObject::packUpdate( NetConnection *conn, U32 mask, BitStream *st
       stream->write( mTextureName );
       stream->write( mProfileName );
       stream->write( mLineTextureName );
-      stream->write( mGeomShapeFileName );
+      //stream->write( mGeomShapeFileName );
+      
    }
 
    return retMask;
@@ -193,7 +194,7 @@ void AudioTextureObject::unpackUpdate( NetConnection *conn, BitStream *stream ){
       stream->read( &mTextureName );
       stream->read( &mProfileName );
       stream->read( &mLineTextureName );
-      stream->read( &mGeomShapeFileName );
+      //stream->read( &mGeomShapeFileName );
    
       if ( isProperlyAdded() )       
          updateMaterial();      
@@ -406,6 +407,7 @@ void AudioTextureObject::updateMaterial()
       mLineTexture.set(mLineTextureName, &GFXDefaultStaticDiffuseProfile, String("Line Texture"));
    }
 
+   /*
    if(!mGeomShapeFileName.isEmpty()){
       // if name does not match
       if (mGeomShapeInstance && !mGeomShapeFileName.equal( mGeomShapeResource.getPath().getFullPath(), String::NoCase )){
@@ -438,6 +440,7 @@ void AudioTextureObject::updateMaterial()
          }
       }      
    }
+   */
 
    /*
    if( mMaterialName.isEmpty() )
@@ -540,7 +543,7 @@ void AudioTextureObject::prepRenderImage( SceneRenderState *state ){
       drawTriLineTex(0.0f,0.0f,x*0.5f,y*0.5f,ColorI(255,255,255),0.1f);
 
       static Vector<Point2F> lineList;
-      U32 maxPoints = 32;
+      U32 maxPoints = 64;
       if(lineList.size() != maxPoints){
          lineList.fill(Point2F(0.0,0.0));
          lineList.setSize(maxPoints);         
@@ -554,7 +557,7 @@ void AudioTextureObject::prepRenderImage( SceneRenderState *state ){
          lineList[i].set(-1.0 + F32(i)*xinc,lowPassFilter(mRandF(-1.0f,1.0f),lineList[i].y,0.05f));
          //Con::printf("%.4f,%.4f",lineList[i].x,lineList[i].y);
       }
-      drawTriLineTexN(lineList,ColorI(255,255,255),0.05f);
+      drawTriLineTexN(lineList,ColorI(255,255,255),0.005f);
 
       //GFX->setStateBlock(mReflectSB);      
 
@@ -784,24 +787,24 @@ void AudioTextureObject::drawTriLineTexN( Vector<Point2F> &points, const ColorI 
       verts[6+voff].point.set( x2 + ovect.x*2 + ovect.y, y2 + ovect.y*2 - ovect.x, 0.0f ); // bottom
       verts[7+voff].point.set( x2 + ovect.x*2 - ovect.y, y2 + ovect.y*2 + ovect.x, 0.0f ); // top      
       verts[8+voff].point.set( verts[7+voff].point ); // eat this vert, degenerate triangle
-      verts[9+voff].point.set( verts[7+voff].point ); // eat this vert, degenerate triangle
+      //verts[9+voff].point.set( verts[7+voff].point ); // eat this vert, degenerate triangle
 
       // grab uv coords
       U32 uvoffset = uvIndex*8; 
       for(U32 i = 0; i < 8; i++){
          verts[i+voff].texCoord.set(mUVCoords[i+uvoffset].x,mUVCoords[i+uvoffset].y);         
       } 
-      verts[8+voff].texCoord.set(verts[7+voff].texCoord.x,verts[7+voff].texCoord.y);  // make sure textures coords are valid
-      verts[9+voff].texCoord.set(verts[7+voff].texCoord.x,verts[7+voff].texCoord.y);  // make sure textures coords are valid
+      //verts[8+voff].texCoord.set(verts[7+voff].texCoord.x,verts[7+voff].texCoord.y);  // make sure textures coords are valid
+      //verts[9+voff].texCoord.set(verts[7+voff].texCoord.x,verts[7+voff].texCoord.y);  // make sure textures coords are valid
 
-      for(U32 i = 0; i < numLineVerts; i++){
+      for(U32 i = 0; i < numLineVerts-2; i++){
          verts[i+voff].color = color;
       }      
 
       if(i >= 1){
          // fixup this vert
          verts[-1+voff].point.set(verts[0+voff].point);  // eat this vert, degenerate triangle
-         verts[-1+voff].texCoord.set(verts[0+voff].texCoord.x,verts[0+voff].texCoord.y);  // make sure textures coords are valid
+         //verts[-1+voff].texCoord.set(verts[0+voff].texCoord.x,verts[0+voff].texCoord.y);  // make sure textures coords are valid
       }
    }
    
@@ -811,6 +814,7 @@ void AudioTextureObject::drawTriLineTexN( Vector<Point2F> &points, const ColorI 
    GFX->drawPrimitive( GFXTriangleStrip, 0, numVerts-4 );  // clip off 2 unused vertexes
 }
 
+/*
 TSMesh* AudioTextureObject::findShape(String shapeName){
    for ( U32 i = 0; i < mGeomShapeInstance->mMeshObjects.size(); i++ ){
       const TSShapeInstance::MeshObjectInstance &mesh = mGeomShapeInstance->mMeshObjects[i];
@@ -915,9 +919,9 @@ void AudioTextureObject::drawLineShape( F32 x1, F32 y1, F32 x2, F32 y2, const Co
    verts.unlock();
 
    GFX->setVertexBuffer( verts );    
-   GFX->drawPrimitive( GFXTriangleStrip, 0, 2 );      
-   
+   GFX->drawPrimitive( GFXTriangleStrip, 0, 2 );         
 }
+*/
 
 void AudioTextureObject::drawLine( F32 x1, F32 y1, F32 x2, F32 y2, const ColorI &color )
 {
@@ -962,7 +966,9 @@ DefineEngineMethod( AudioTextureObject, setAudioObject, void, (SimObject* aObj),
 IMPLEMENT_CONOBJECT(NamedTexTargetObject);
 
 NamedTexTargetObject::NamedTexTargetObject(){
-   mTexSize = 1024;
+   //mTexSize = 1024;
+   mTexDims.x = 1024;
+   mTexDims.y = 1024;
 }
 NamedTexTargetObject::~NamedTexTargetObject(){   
 }
@@ -971,8 +977,11 @@ void NamedTexTargetObject::initPersistFields(){
    addGroup( "Settings" );
       addField( "targetName", TypeRealString, Offset(mTexTargetName, NamedTexTargetObject), 
          "Name used to define NamedTexTarget");
-      addField( "texSize", TypeS32, Offset( mTexSize, NamedTexTargetObject ),
-         "Texture size setting for both x and y.  Not dynamically updated.");
+      //addField( "texSize", TypeS32, Offset( mTexSize, NamedTexTargetObject ),
+      //   "Texture size setting for both x and y.  Not dynamically updated.");
+      // mTexDims
+      addField( "texDims", TypePoint2I, Offset( mTexDims, NamedTexTargetObject ),
+         "Texture size setting for x and y.  Not dynamically updated.");
    endGroup( "Settings" );
 
    Parent::initPersistFields();
@@ -995,7 +1004,7 @@ bool NamedTexTargetObject::onAdd(){
    Con::warnf("NamedTexTargetObject::onAdd - Texture target registered: %s",mTexTargetName.c_str());
    mTexTarget.registerWithName(mTexTargetName);
    
-   mTextureBuffer.set(mTexSize, mTexSize, GFXFormatR8G8B8X8, &GFXDefaultRenderTargetProfile, "", 0); 
+   mTextureBuffer.set(mTexDims.x, mTexDims.y, GFXFormatR8G8B8X8, &GFXDefaultRenderTargetProfile, "", 0); 
    if(mTextureBuffer.getPointer()){
       mTexTarget.setTexture(mTextureBuffer.getPointer());
    }
