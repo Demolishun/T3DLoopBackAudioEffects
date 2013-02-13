@@ -204,18 +204,18 @@ void AudioLoopbackThread::run(void *arg /* = 0 */)
          if(pData != NULL){
             U32 currentindex = samplesize;
             samplesize += packetLength;            
-            if(samplesize > buffersize || internalSampleData == NULL){
+            if(samplesize > buffersize || internalSampleData == NULL){               
                buffersize = samplesize;
                internalSampleData = (F32 *)realloc(internalSampleData, sizeof(F32)*buffersize*AUDIO_NUM_CHANNELS);               
                //Con::printf("%d", buffersize);  // verify allocation is working
             }
+            
             F32 *pFloatData = reinterpret_cast<F32*>(pData);
             //Con::printf("packetlength: %d",packetLength);                   
             
             for(U32 count=0; count<packetLength; count++){               
                internalSampleData[currentindex*AUDIO_NUM_CHANNELS+count*AUDIO_NUM_CHANNELS+0] = pFloatData[count*pwfx->nChannels+0];
-               internalSampleData[currentindex*AUDIO_NUM_CHANNELS+count*AUDIO_NUM_CHANNELS+1] = pFloatData[count*pwfx->nChannels+1];
-               
+               internalSampleData[currentindex*AUDIO_NUM_CHANNELS+count*AUDIO_NUM_CHANNELS+1] = pFloatData[count*pwfx->nChannels+1];               
             }                        
          }else{
             // do calcs with zero for values

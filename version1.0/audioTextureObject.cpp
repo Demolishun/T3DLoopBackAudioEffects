@@ -27,6 +27,7 @@ AudioTextureObject::AudioTextureObject(){
    // Flag this object so that it will always
    // be sent across the network to clients
    mNetFlags.set( Ghostable | ScopeAlways );
+   //mNetFlags.set( ScopeAlways );
 
    mTypeMask |= StaticObjectType | StaticShapeObjectType;
 
@@ -169,9 +170,14 @@ U32 AudioTextureObject::packUpdate( NetConnection *conn, U32 mask, BitStream *st
    if ( stream->writeFlag( mask & UpdateMask ) ){
       stream->write( mTextureName );
       stream->write( mProfileName );
-      stream->write( mLineTextureName );
-      //stream->write( mGeomShapeFileName );
-      
+      stream->write( mLineTextureName );      
+      //stream->write( mGeomShapeFileName );   
+      if(mLoopBackObject){
+         stream->writeFlag(true);  
+         stream->write( String(mLoopBackObject->getName()) );      
+      }else{
+         stream->writeFlag(false);
+      }
    }
 
    return retMask;
@@ -193,8 +199,10 @@ void AudioTextureObject::unpackUpdate( NetConnection *conn, BitStream *stream ){
    {
       stream->read( &mTextureName );
       stream->read( &mProfileName );
-      stream->read( &mLineTextureName );
+      stream->read( &mLineTextureName );      
       //stream->read( &mGeomShapeFileName );
+      if( stream->readFlag() )
+         stream->read( &mLoopBackObjectName );
    
       if ( isProperlyAdded() )       
          updateMaterial();      
@@ -407,6 +415,17 @@ void AudioTextureObject::updateMaterial()
       mLineTexture.set(mLineTextureName, &GFXDefaultStaticDiffuseProfile, String("Line Texture"));
    }
 
+   if(mLoopBackObjectName.isNotEmpty()){
+      Con::warnf("AudioTextureObject::updateMaterial : %s",mLoopBackObjectName.c_str());
+      SimObject* tmpObj = Sim::findObject(mLoopBackObjectName.c_str());
+      LoopBackObject* tmpLBObj = dynamic_cast<LoopBackObject*>(tmpObj);      
+      mLoopBackObject = tmpLBObj;      
+
+      if(!mLoopBackObject){
+         Con::warnf("AudioTextureObject::updateMaterial : loopbackobject not found.");
+      }
+   }
+
    /*
    if(!mGeomShapeFileName.isEmpty()){
       // if name does not match
@@ -468,19 +487,41 @@ void AudioTextureObject::prepRenderImage( SceneRenderState *state ){
    if ( mVertexBuffer.isNull() )
       createGeometry();   
 
-   // do render to texture here
-   // render to texture
-   if(mTexture){   
+   // do RTT here
+   // if mTexture is not valid there is no valid target
+   // check for data changed from the data source
+
+   /*
+   if(isClientObject())
+      Con::printf("Running on client");
+   else
+      Con::printf("Running on server");
+   */
+
+   Vector<F32> sourceData;
+   U32 changed=0;
+   LoopBackObject* tmpObj = mLoopBackObject.getObject();
+   if(tmpObj){
+      changed = mLoopBackObject->getAudioOutput(sourceData);
+   }else{
+      //Con::printf("No object to get data from.");
+   }
+   if(mTexture && sourceData.size() && changed != mLoopBackObjectChanged){
+      mLoopBackObjectChanged = changed;
+
       static F32 texrot = 0.0f;
-       
+      
+      // save render state 
       GFXTransformSaver subsaver;     
 
+      // prepare render texture
       mGFXTextureTarget = GFX->allocRenderToTextureTarget();        
       mGFXTextureTarget->attachTexture(GFXTextureTarget::Color0,mTexture);
-
+      // save render target and set new render target
       GFX->pushActiveRenderTarget();      
       GFX->setActiveRenderTarget(mGFXTextureTarget);
-            
+      
+      /*      
       GFX->setWorldMatrix(MatrixF::Identity);   
       GFX->setProjectionMatrix(MatrixF::Identity);
       
@@ -495,6 +536,12 @@ void AudioTextureObject::prepRenderImage( SceneRenderState *state ){
       MatrixF newview = MatrixF::Identity;
       newview.setColumn(3, Point3F(0.0f,1.0f,0.0f));
       GFX->setViewMatrix(newview);   
+      */
+      
+      
+      //GFX->setWorldMatrix(MatrixF::Identity); 
+      //GFX->setProjectionMatrix(MatrixF::Identity);
+      //GFX->setViewMatrix(MatrixF::Identity);
                 
       F32 left, right, top, bottom;
       F32 fnear = 0.01f;
@@ -504,24 +551,25 @@ void AudioTextureObject::prepRenderImage( SceneRenderState *state ){
       Frustum tmpFrust = GFX->getFrustum();
       GFX->setFrustum( left, right, bottom, top, fnear, ffar );                       
      
-      //GFX->clear(GFXClearTarget|GFXClearZBuffer|GFXClearStencil,ColorI(0,0,0),1.0f,0);      
+      // clear the texture out
+      //GFX->clear(GFXClearTarget|GFXClearZBuffer|GFXClearStencil,ColorI(0,0,0),1.0f,0);            
       GFX->clear(GFXClearTarget,ColorI(0,0,0),1.0f,0);
       GFX->setStateBlock( mNormalSB );
-      GFX->setVertexBuffer( mVertexBuffer );
-      GFX->setTexture(0, mWarningTexture);     
+      //GFX->setVertexBuffer( mVertexBuffer );
+      //GFX->setTexture(0, mWarningTexture);     
       GFX->setupGenericShaders( GFXDevice::GSModColorTexture );        
 
-      GFX->setWorldMatrix(MatrixF::Identity);
-      GFX->multWorld(newtrans);
+      //GFX->setWorldMatrix(MatrixF::Identity);
+      //GFX->multWorld(newtrans);
 
       if(mShader.isValid()){         
          //GFX->setShader(mShader);
       }
-      GFX->drawPrimitive( GFXTriangleList, 0, 4 );
+      //GFX->drawPrimitive( GFXTriangleList, 0, 4 );
             
+      GFX->setWorldMatrix(MatrixF::Identity); 
       GFX->setProjectionMatrix(MatrixF::Identity);
       GFX->setViewMatrix(MatrixF::Identity);
-      GFX->setWorldMatrix(MatrixF::Identity);      
       
       if(mShader.isValid()){         
          //GFX->setShader(mShader);
@@ -533,6 +581,7 @@ void AudioTextureObject::prepRenderImage( SceneRenderState *state ){
       else
          GFX->setTexture(0, NULL);            
       
+      /*
       F32 size = float(mTexture->getSize().x);
       //drawTriLineTex(0.0f,0.0f,0.5f,0.5f,ColorI(255,255,255),size*0.01f/size);      
       //drawTriLineTex(0.0f,0.0f,0.5f,0.5f,ColorI(255,255,255),0.01f);
@@ -541,23 +590,52 @@ void AudioTextureObject::prepRenderImage( SceneRenderState *state ){
       F32 x = mCos(texrot);
       F32 y = mSin(texrot);
       drawTriLineTex(0.0f,0.0f,x*0.5f,y*0.5f,ColorI(255,255,255),0.1f);
+      */
 
-      static Vector<Point2F> lineList;
-      U32 maxPoints = 64;
-      if(lineList.size() != maxPoints){
-         lineList.fill(Point2F(0.0,0.0));
-         lineList.setSize(maxPoints);         
-      }
+      static Vector<Point2F> lineList1, lineList2;
+      U32 maxPoints = sourceData.size()/2;
+      F32 ratio = F32(maxPoints)/512.0f;
+      if(maxPoints > 512)
+         maxPoints = 512;
+      
+      //lineList1.fill(Point2F(0.0,0.0));
+      //lineList1.clear();
+      lineList1.setSize(maxPoints);         
+      //lineList2.fill(Point2F(0.0,0.0));
+      //lineList2.clear();
+      lineList2.setSize(maxPoints);      
                 
       F32 xinc = (1.0f/F32(maxPoints-1))*2.0f;  
-      F32 sinval = 1.0f/F32(maxPoints-1) * 360.0f;      
+      //F32 sinval = 1.0f/F32(maxPoints-1) * 360.0f;      
           
+      U32 ratIndex = 0;
+      F32 ratFilter = 1.0f/ratio;
+      F32 ratSum = 0.0f;
+      F32 ampVal = 1.0f;
       for(U32 i=0; i < maxPoints; i++){   
          //F32 sinx = mSin(sinval*F32(i))/2.0f;
-         lineList[i].set(-1.0 + F32(i)*xinc,lowPassFilter(mRandF(-1.0f,1.0f),lineList[i].y,0.05f));
+         //lineList[i].set(-1.0 + F32(i)*xinc,lowPassFilter(mRandF(-1.0f,1.0f),lineList[i].y,0.05f));
+         if(ratio > 1.0f){
+            F32 x = sourceData[ratIndex*2];
+            F32 y = sourceData[ratIndex*2+1];
+            ratIndex++;
+            ratSum += ratio - 1.0f;
+            while(ratSum >= 1.0f){               
+               x = lowPassFilter(sourceData[ratIndex*2],x,ratFilter);
+               y = lowPassFilter(sourceData[ratIndex*2+1],y,ratFilter);
+               ratIndex++;
+               ratSum -= 1.0f;
+            }
+            lineList1[i].set(-1.0 + F32(i)*xinc, x * ampVal - 0.5f);
+            lineList2[i].set(-1.0 + F32(i)*xinc, y * ampVal + 0.5f);
+         }else{
+            lineList1[i].set(-1.0 + F32(i)*xinc, sourceData[i*2] * ampVal - 0.5f);
+            lineList2[i].set(-1.0 + F32(i)*xinc, sourceData[i*2+1] * ampVal + 0.5f);
+         }
          //Con::printf("%.4f,%.4f",lineList[i].x,lineList[i].y);
       }
-      drawTriLineTexN(lineList,ColorI(255,255,255),0.005f);
+      drawTriLineTexN(lineList1,ColorI(255,64,64),0.005f);
+      drawTriLineTexN(lineList2,ColorI(64,64,255),0.005f);
 
       //GFX->setStateBlock(mReflectSB);      
 
@@ -952,13 +1030,20 @@ DefineEngineMethod( AudioTextureObject, postApply, void, (),,
 	object->inspectPostApply();
 }
 DefineEngineMethod( AudioTextureObject, setAudioObject, void, (SimObject* aObj),,
+//DefineEngineMethod( AudioTextureObject, setAudioObject, void, (String objName),,
    "Set audio object as source audio data.  Must be a LoopBackObject based object.\n")
-{
+{   
    LoopBackObject* tObj = dynamic_cast<LoopBackObject*>(aObj);   
    if(!tObj && aObj){
       Con::warnf("AudioTextureObject.setAudioObject - console method failed.  Object provided is not a LoopBackObject derived object.");
    }else{
-      object->setAudioObject(tObj);	
+      object->setAudioObject(tObj);
+      object->inspectPostApply();	
+      
+      if(object->isClientObject())
+         Con::errorf("Running on client");
+      else
+         Con::errorf("Running on server");
    }
 }
 

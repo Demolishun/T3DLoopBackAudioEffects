@@ -81,6 +81,8 @@ private:
 
    // source data object
    SimObjectPtr<LoopBackObject> mLoopBackObject;
+   U32 mLoopBackObjectChanged;
+   String mLoopBackObjectName;
 
 public:
    AudioTextureObject();
@@ -130,7 +132,12 @@ public:
    void render( ObjectRenderInst *ri, SceneRenderState *state, BaseMatInstance *overrideMat );   
 
    // set audio object
-   void setAudioObject(LoopBackObject* aObj){mLoopBackObject = aObj;};
+   void setAudioObject(LoopBackObject* aObj){
+      Con::warnf("setAudioObject");
+      mLoopBackObject = aObj;
+      if(!aObj)
+         Con::warnf("setAudioObject: aObj is NULL!");      
+   };
 
    DECLARE_CONOBJECT(AudioTextureObject);
 

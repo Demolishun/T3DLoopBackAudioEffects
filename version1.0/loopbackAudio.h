@@ -147,7 +147,7 @@ public:
       mutex.lock( &objectSampleBufferMutex, true );      
 
       retoutput.clear();
-      retoutput.set( objectSampleBuffer, objectSampleBufferSize*AUDIO_NUM_CHANNELS );   
+      retoutput.set( objectSampleBuffer, objectSampleBufferSamples*AUDIO_NUM_CHANNELS );   
 
       return mDataChanged;
    }
