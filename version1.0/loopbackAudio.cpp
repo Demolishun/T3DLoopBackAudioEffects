@@ -323,6 +323,8 @@ LoopBackObject::LoopBackObject(){
    extSamplesPerSecond = NULL;
 
    removeFunc = NULL;  
+
+   mDataChanged = 0;
 }
 LoopBackObject::~LoopBackObject(){   
    // call remove function
@@ -383,6 +385,9 @@ void LoopBackObject::process(){
    // now perform additional processing on sample data
    // keeps from needing to reacquire mutex or call additional functions
    process_unique();
+
+   // All done, update counter
+   mDataChanged++;
 
    // release object mutex
    objectMutex.unlock();   

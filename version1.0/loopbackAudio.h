@@ -111,6 +111,9 @@ protected:
    U32 objectSampleBufferSize;
    U32 objectSampleBufferSamples;
    U32 objectSamplesPerSecond;
+   // flag to indicate that the data has changed
+   // is updated after both the raw data is copied and the processed data is updated on derived classes
+   U32 mDataChanged;
 
    // hook to properly remove object from any list it belongs to
    void (*removeFunc)(LoopBackObject* object);
@@ -128,13 +131,33 @@ public:
    // objectSampleBufferMutex should be acquired before calling this function, see LoopBackObject::process()
    virtual void process_unique(){};
 
-   // get the processed FFT output divided up into bands
-   void getAudioOutput(Vector<F32>& retoutput){
+   // check for data changed
+   //    the mDataChanged flag will update on each new sample from the source
+   //    it is simply a counter that will roll over after 4 billion plus counts
+   U32 getDataChanged(){
+      MutexHandle objectMutex;
+      objectMutex.lock( &objectSampleBufferMutex, true );
+
+      return mDataChanged;
+   }
+   // get the raw audio in stereo 
+   // returns changed flag  
+   virtual U32 getAudioOutput(Vector<F32>& retoutput){
       MutexHandle mutex;
-      mutex.lock( &objectSampleBufferMutex, true );
+      mutex.lock( &objectSampleBufferMutex, true );      
 
       retoutput.clear();
-      retoutput.set( objectSampleBuffer, objectSampleBufferSize*AUDIO_NUM_CHANNELS );            
+      retoutput.set( objectSampleBuffer, objectSampleBufferSize*AUDIO_NUM_CHANNELS );   
+
+      return mDataChanged;
+   }
+   // get the processed output, redefined in derived objects
+   // returns changed flag
+   virtual U32 getProcessedOutput(Vector<F32>& retoutput){      
+      // just clear the provided buffer to indicate there is nothing to get from this object
+      retoutput.clear();
+      // no data, just return zero for changed
+      return 0;
    }
    
    DECLARE_CONOBJECT(LoopBackObject);
@@ -191,6 +214,14 @@ public:
 
       retoutput.clear();
       retoutput.merge(AudioFreqOutput);         
+   }
+   // get the processed FFT output
+   // returns changed flag
+   virtual U32 getProcessedOutput(Vector<F32>& retoutput){  
+      // return object specific data    
+      getAudioFreqOutput(retoutput);
+      // get mutex protected changed flag
+      return getDataChanged();
    }
 
    DECLARE_CONOBJECT(FFTObject);

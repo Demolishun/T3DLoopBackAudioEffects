@@ -80,7 +80,7 @@ private:
    String mProfileName;
 
    // source data object
-   LoopBackObject* mLoopBackObject;
+   SimObjectPtr<LoopBackObject> mLoopBackObject;
 
 public:
    AudioTextureObject();
@@ -102,7 +102,7 @@ public:
    void drawTriLine( F32 x1, F32 y1, F32 x2, F32 y2, const ColorI &color, F32 thickness = 0.1f );
    void drawTriLineTex( F32 x1, F32 y1, F32 x2, F32 y2, const ColorI &color, F32 thickness = 0.1f, U32 uvIndex=0 );   
    void drawTriLineTexN( Vector<Point2F> &points, const ColorI &color, F32 thickness, U32 uvIndex=0 );
-   void drawLineShape( F32 x1, F32 y1, F32 x2, F32 y2, const ColorI &color, F32 thickness = 0.1f );
+   //void drawLineShape( F32 x1, F32 y1, F32 x2, F32 y2, const ColorI &color, F32 thickness = 0.1f );
    void drawLine( F32 x1, F32 y1, F32 x2, F32 y2, const ColorI &color );
    void drawLine( F32 x1, F32 y1, F32 z1, F32 x2, F32 y2, F32 z2, const ColorI &color );
 
@@ -118,12 +118,12 @@ public:
    void unpackUpdate( NetConnection *conn, BitStream *stream );
 
    // Create the geometry for rendering
-   //    would used for debug only
+   //    would be used for debug only
    void createGeometry();
 
    void updateMaterial();
 
-   // This is the function that allows this object to submit itself for rendering
+   // This function actually does the render to texture
    void prepRenderImage( SceneRenderState *state );
 
    // render the bitmap
@@ -142,6 +142,7 @@ private:
 // This object is used to register a texture target object so it can be used later.
 // It can be found by searching using this function: NamedTexTarget::find(String textureName)
 // The texture name is the textureName attribute of the object.
+// This is intended to be a client side object.
 class NamedTexTargetObject : public SimObject
 {
 private:
