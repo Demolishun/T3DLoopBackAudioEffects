@@ -42,6 +42,10 @@
 
 #include "gfx/gfxTextureHandle.h"
 
+#include "ts/tsShapeInstance.h"
+
+#include "renderinstance/renderMeshMgr.h"
+
 class BaseMatInstance;
 
 
@@ -82,6 +86,7 @@ class RenderRTTExample : public SceneObject
    // The handles for our StateBlocks
    GFXStateBlockRef mNormalSB;
    GFXStateBlockRef mReflectSB;
+   GFXStateBlockRef mNoCullSB;
 
    // The GFX vertex and primitive buffers
    GFXVertexBufferHandle< VertexType > mVertexBuffer;
@@ -108,6 +113,27 @@ class RenderRTTExample : public SceneObject
 
    // objects to store supporting stuff
    GFXTexHandle mWarningTexture;
+
+   // render management
+   SceneRenderState *mState;
+   TSShapeInstance *mShapeInstance;
+   TSRenderState mRData;
+
+   RenderPassManager *mRenderPass;
+   RenderMeshMgr     *mMeshRenderBin;
+   GFXTextureTarget *mRenderTarget;
+
+   // 
+   F32 mOrthoRadius;
+   
+   // animation variables
+   F32 mRotParm1;
+   F32 mRotParm2;
+   F32 mRotParm3;
+   F32 mRotParm4;
+
+   // font for showing text
+   Resource<GFont> mFont;
 
 public:
    RenderRTTExample();
@@ -153,6 +179,10 @@ public:
    // Create the geometry for rendering
    void createGeometry();
 
+   // RTT support functions
+   void rttBegin(RectI& vpDims, bool isOrtho=false, F32 orthoRadius=1.0f);
+   void rttEnd();
+
    // This is the function that allows this object to submit itself for rendering
    void prepRenderImage( SceneRenderState *state );
 
@@ -166,6 +196,10 @@ public:
    void inspectPostApply();
    // stuff that needs updating 
    void updateStuff();
+
+   // time stuff
+   virtual void advanceTime( F32 dt );
+   
 };
 
 #endif // _RENDERRTTEXAMPLE_H_

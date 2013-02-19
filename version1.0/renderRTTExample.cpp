@@ -36,6 +36,7 @@
 #include "gfx/gfxDrawUtil.h"
 #include "materials/materialManager.h"
 #include "materials/baseMatInstance.h"
+#include "gfx/gFont.h"
 
 // missing editing flag
 extern bool gEditingMission;
@@ -66,6 +67,11 @@ RenderRTTExample::RenderRTTExample()
 
    // Set it as a "static" object
    mTypeMask |= StaticObjectType | StaticShapeObjectType;
+
+   mRotParm1 = mRotParm2 = mRotParm3 = mRotParm4 = 0.0f;
+
+   String fontCacheDir = Con::getVariable("$GUI::fontCacheDirectory");
+   mFont = GFont::create("Arial", 12, fontCacheDir);
 }
 
 RenderRTTExample::~RenderRTTExample()
@@ -113,11 +119,15 @@ bool RenderRTTExample::onAdd()
    // Add this object to the scene
    addToScene();
 
+   setProcessTick( true );
+
    return true;
 }
 
 void RenderRTTExample::onRemove()
 {
+   setProcessTick( false );
+
    // Remove this object from the scene
    removeFromScene();
 
@@ -247,12 +257,80 @@ void RenderRTTExample::createGeometry()
    GFXStateBlockDesc desc;
 
    // The normal StateBlock only needs a default StateBlock
+   desc.cullDefined = true;
+   desc.cullMode = GFXCullCCW;   
    mNormalSB = GFX->createStateBlock( desc );
+
+   desc.cullMode = GFXCullNone;
+   mNoCullSB = GFX->createStateBlock( desc );
 
    // The reflection needs its culling reversed
    desc.cullDefined = true;
    desc.cullMode = GFXCullCW;
-   mReflectSB = GFX->createStateBlock( desc );
+   mReflectSB = GFX->createStateBlock( desc );   
+}
+
+// these methods were modeled after the methods in imposterCapture.cpp that uses RTT
+void RenderRTTExample::rttBegin(RectI& vpDims, bool isOrtho, F32 orthoRadius)
+{
+   // set gfx up for render to texture
+   // this keeps viewport from being messed with on default target
+   GFX->pushActiveRenderTarget();
+
+   if(isOrtho)
+      mOrthoRadius = orthoRadius;
+   else
+      mOrthoRadius = 10.0f; // eh, whatever
+
+   GFX->setViewport( vpDims );
+   // if ortho then setup ortho projection
+   if(isOrtho)
+   {
+      GFX->setOrtho( -mOrthoRadius, mOrthoRadius, -mOrthoRadius, mOrthoRadius, 1, 20.0f * mOrthoRadius );
+   }
+   
+   // Position camera looking out the X axis.
+   MatrixF cameraMatrix( true );
+   //cameraMatrix.setColumn( 0, Point3F( 0, 0, 1 ) );
+   //cameraMatrix.setColumn( 1, Point3F( 1, 0, 0 ) );
+   //cameraMatrix.setColumn( 2, Point3F( 0, 1, 0 ) );
+
+   // Setup frustum
+   F32 left, right, top, bottom, nearPlane, farPlane;
+   GFX->getFrustum( &left, &right, &bottom, &top, &nearPlane, &farPlane, &isOrtho );
+   Frustum frust( isOrtho, left, right, top, bottom, nearPlane, farPlane, cameraMatrix );
+
+   mRenderPass = new RenderPassManager();
+   mRenderPass->assignName( "DiffuseRenderPass" );
+   mMeshRenderBin = new RenderMeshMgr();
+   mRenderPass->addManager( mMeshRenderBin );
+   
+   // Set up scene state.
+   mState = new SceneRenderState(
+      gClientSceneGraph,
+      SPT_Diffuse,
+      SceneCameraState( vpDims, frust, GFX->getWorldMatrix(),GFX->getProjectionMatrix() ),
+      mRenderPass,
+      false
+   );
+
+   // Set up our TS render state.
+   mRData.setSceneState( mState );
+   mRData.setCubemap( NULL );
+   mRData.setFadeOverride( 1.0f );
+   
+   mRenderTarget = GFX->allocRenderToTextureTarget();
+}
+void RenderRTTExample::rttEnd()
+{
+   GFX->popActiveRenderTarget();
+
+   mShapeInstance = NULL;
+
+   mRenderTarget = NULL;
+   mMeshRenderBin = NULL; // Deleted by mRenderPass
+   SAFE_DELETE( mState );
+   SAFE_DELETE( mRenderPass );   
 }
 
 void RenderRTTExample::prepRenderImage( SceneRenderState *state )
@@ -274,6 +352,56 @@ void RenderRTTExample::prepRenderImage( SceneRenderState *state )
    {
       GFXTexHandle tmpTexHandle = mTextureBuffer.getPointer();
 
+      RectI viewport(0,0,tmpTexHandle->getWidth(),tmpTexHandle->getHeight());
+
+      // could not get this to work, left in for people to experiment with. Modeled after imposters
+      /*
+      rttBegin(viewport);
+
+      {
+         GFXTransformSaver saver;
+
+         // The object to world transform.
+         MatrixF rotMatrix;
+         Point3F center(0.0f,0.0f,0.0f);
+      
+         MatrixF centerMat( true );
+         centerMat.setPosition( -center );
+         MatrixF objMatrix( rotMatrix );
+         objMatrix.mul( centerMat );
+         GFX->setWorldMatrix( objMatrix );
+
+         // The view transform.
+         MatrixF view( EulerF( M_PI_F / 2.0f, 0, M_PI_F ), Point3F( 0, 0, -10.0f * mOrthoRadius ) );
+         mRenderPass->assignSharedXform( RenderPassManager::View, view );
+
+         mRenderPass->assignSharedXform( RenderPassManager::Projection, GFX->getProjectionMatrix() );
+
+         // Render the diffuse pass.
+         mRenderPass->clear();
+         //mMeshRenderBin->getMatOverrideDelegate().bind( ImposterCaptureMaterialHook::getDiffuseInst );
+         // rtt here
+         mRenderTarget->attachTexture( GFXTextureTarget::Color0, tmpTexHandle );
+         mRenderTarget->attachTexture( GFXTextureTarget::DepthStencil, GFXTextureTarget::sDefaultDepthStencil );
+         GFX->setActiveRenderTarget( mRenderTarget );
+         
+         //GFX->clear( GFXClearZBuffer | GFXClearStencil | GFXClearTarget, ColorI(0,0,255), 1.0f, 0 );
+         GFX->clear( GFXClearTarget, ColorI(0,0,255), 1.0f, 0 );
+
+         // draw calls here
+         GFX->getDrawUtil()->setBitmapModulation(ColorI(255,128,128));
+         GFX->getDrawUtil()->draw2DSquare(Point2F(0.1f,0.1f),tmpTexHandle->getWidth()*0.9f,0.0f);
+
+         mState->getRenderPass()->renderPass( mState );
+
+         mRenderTarget->resolve();
+      }
+
+      rttEnd();
+      */
+      
+      //GFXTexHandle tmpTexHandle = mTextureBuffer.getPointer();
+
       // Save previous render settings.
       // This preserves transforms and restores 
       // them when this object goes out of scope.
@@ -288,45 +416,64 @@ void RenderRTTExample::prepRenderImage( SceneRenderState *state )
       GFX->pushActiveRenderTarget();      
       GFX->setActiveRenderTarget(mGFXTextureTarget);
 
-      // setup transforms
-      GFX->setWorldMatrix(MatrixF::Identity); 
-      GFX->setProjectionMatrix(MatrixF::Identity);
-      GFX->setViewMatrix(MatrixF::Identity);
+      GFX->setViewport( viewport );      
 
-      // notes:
-      // ImposterCapture::begin
-
-      // set ortho for 2D
+      // set ortho for 2D  
+      /*    
       MatrixF outMat;
-      MathUtils::makeOrthoProjection(&outMat,-1.0f,-1.0f,1.0f,1.0f,0.1,-10,false);
+      MathUtils::makeOrthoProjection(&outMat,-1.0f,-1.0f,1.0f,1.0f,0.1f,-10.0f,false);
       GFX->setOrtho(-1.0f,-1.0f,1.0f,1.0f,0.1f,-10.0f);
-      GFX->setProjectionMatrix(outMat);      
-
-      // draw background
-      GFX->getDrawUtil()->draw2DSquare(Point2F(0.1f,0.1f),tmpTexHandle->getWidth()*0.9f,0.0f);
+      GFX->setProjectionMatrix(outMat); 
+      */
 
       // setup frustrum
       F32 left, right, top, bottom;
-      F32 fnear = 0.01f;
+      F32 fnear = 0.001f;
       F32 ffar = -10.0f;
       // handy dandy tool!
       MathUtils::makeFrustum( &left, &right, &top, &bottom, M_HALFPI_F, 1.0f, fnear );      
-      GFX->setFrustum( left, right, bottom, top, fnear, ffar );
+      GFX->setFrustum( left, right, bottom, top, fnear, ffar );  
+      //MatrixF outMat;
+      //MathUtils::makeProjection(&outMat,M_HALFPI_F,1.0f,fnear,ffar,false);
+      //GFX->setProjectionMatrix(outMat);
+
+      // setup transforms
+      GFX->setWorldMatrix(MatrixF::Identity); 
+      GFX->setProjectionMatrix(MatrixF::Identity);
+      GFX->setViewMatrix(MatrixF::Identity);   
 
       // setup more crap
-      GFX->clear(GFXClearTarget,ColorI(0,0,0),1.0f,0);
+      GFX->clear(GFXClearTarget,ColorI(0,0,64),1.0f,0);
       // might need to clear z buffer
       // GFX->clear(GFXClearTarget|GFXClearZBuffer|GFXClearStencil,ColorI(0,0,0),1.0f,0);
-      GFX->setStateBlock( mNormalSB );          
-      GFX->setupGenericShaders( GFXDevice::GSModColorTexture );  
+      //if ( state->isReflectPass() )
+         GFX->setStateBlock( mReflectSB );
+      //else
+         //GFX->setStateBlock( mNormalSB );         
+      GFX->setupGenericShaders( GFXDevice::GSModColorTexture ); 
+
+      // draw background
+      //GFX->getDrawUtil()->draw2DSquare(Point2F(0.1f,0.1f),tmpTexHandle->getWidth()*0.9f,0.0f);
+      GFX->getDrawUtil()->setBitmapModulation(ColorI(255,255,255));            
+      GFX->getDrawUtil()->draw2DSquare(Point2F(0.0f,0.0f),1.5f,mRotParm1);      
+
+      // setup frustrum
+      //F32 left, right, top, bottom;
+      //F32 fnear = 0.01f;
+      //F32 ffar = -10.0f;
+      // handy dandy tool!
+      /*
+      MathUtils::makeFrustum( &left, &right, &top, &bottom, M_HALFPI_F, 1.0f, fnear );      
+      GFX->setFrustum( left, right, bottom, top, fnear, ffar );       
 
       // setup transforms
       GFX->setWorldMatrix(MatrixF::Identity); 
       GFX->setProjectionMatrix(MatrixF::Identity);
       GFX->setViewMatrix(MatrixF::Identity);
+      */
 
-      // now lets render something
-      if(0)
+      // now lets render something else
+      if(1)
       {      
          // lets use the warning texture for stuff that needs a texture
          //GFX->setTexture(0, mWarningTexture);      
@@ -337,13 +484,32 @@ void RenderRTTExample::prepRenderImage( SceneRenderState *state )
          // drawing a line
          GFX->getDrawUtil()->drawLine(Point2F(-1.0f,0.0f),Point2F(1.0f,0.0f),ColorI(255,255,255));
 
+         // do some rotation of the world before this next render
+         MatrixF newtrans = GFX->getWorldMatrix();
+         newtrans = newtrans.set(EulerF(0.0f,mRotParm2,0.0f));  
+         newtrans.setColumn(3, Point3F(0.0f,0.0f,0.0f)); 
+         //GFX->setWorldMatrix(MatrixF::Identity);
+         GFX->multWorld(newtrans);   
+         //MatrixF newview = MatrixF::Identity;
+         //newview.setColumn(3, Point3F(0.0f,0.0f,5.0f));
+         //GFX->setViewMatrix(newview);      
+         //Con::printf("%.4f",mRotParm2);
+
          //GFX->getDrawUtil()->drawBitmap(mWarningTexture,Point2F(-1.0,-1.0));
+         //GFX->setStateBlock(mNoCullSB);
          RectF destR(Point2F(0.0,0.0),Point2F(1.0,1.0));
          GFX->getDrawUtil()->drawBitmapStretch(mWarningTexture,destR,GFXBitmapFlip_Y);
       }
+
+      // write some text
+      // not working as the drawText routines use the font render batcher, I have no idea how to use that
+      //GFX->getDrawUtil()->drawText(mFont, Point2I(1,1), "Ooh, text...");
+
+      mGFXTextureTarget->resolve();
             
       // restore render target settings
       GFX->popActiveRenderTarget(); 
+
    }
 
    // done doing our custom RTT
@@ -373,6 +539,24 @@ void RenderRTTExample::prepRenderImage( SceneRenderState *state )
 
    // Submit our RenderInst to the RenderPassManager
    state->getRenderPass()->addInst( ri );
+}
+
+void RenderRTTExample::advanceTime( F32 dt )
+{
+   static F32 p1Dir = 1.0f;
+   mRotParm1 += dt*p1Dir;
+   F32 tP1 = mClampF(mRotParm1,-M_PI_F,M_PI_F);
+   if(tP1 != mRotParm1){
+      p1Dir *= -1.0f;      
+   }
+   mRotParm1 = tP1;
+
+   mRotParm2 += dt*0.5f;
+   F32 tP2 = mClampF(mRotParm2,0.0f,M_PI_F*2.0f);
+   if(tP2 != mRotParm2)
+      mRotParm2 = 0.0f;
+   else
+      mRotParm2 = tP2;
 }
 
 void RenderRTTExample::render( ObjectRenderInst *ri, SceneRenderState *state, BaseMatInstance *overrideMat )
