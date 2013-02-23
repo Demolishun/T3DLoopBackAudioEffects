@@ -87,6 +87,8 @@ class RenderRTTExample : public SceneObject
    GFXStateBlockRef mNormalSB;
    GFXStateBlockRef mReflectSB;
    GFXStateBlockRef mNoCullSB;
+   GFXStateBlockRef mRectFillSB;
+   GFXStateBlockRef mRectTexSB;
 
    // The GFX vertex and primitive buffers
    GFXVertexBufferHandle< VertexType > mVertexBuffer;
@@ -199,6 +201,10 @@ public:
 
    // time stuff
    virtual void advanceTime( F32 dt );
+
+
+   // misc draw
+   void draw2DSquare( const Point3F &screenPoint, F32 width, F32 spinAngle=0.0f );
    
 };
 
