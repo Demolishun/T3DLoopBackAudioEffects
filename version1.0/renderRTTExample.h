@@ -205,6 +205,9 @@ public:
 
    // misc draw
    void draw2DSquare( const Point3F &screenPoint, F32 width, F32 spinAngle=0.0f );
+
+   // testing functions
+   static void printMatrix(const MatrixF& mat);
    
 };
 
