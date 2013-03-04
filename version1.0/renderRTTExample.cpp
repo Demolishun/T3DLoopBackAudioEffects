@@ -439,10 +439,7 @@ void RenderRTTExample::prepRenderImage( SceneRenderState *state )
       mGFXTextureTarget->attachTexture(GFXTextureTarget::Color0,tmpTexHandle);
       // save render target and set new render target
       GFX->pushActiveRenderTarget();      
-      GFX->setActiveRenderTarget(mGFXTextureTarget);
-
-      //GFX->setViewport( viewport ); // this is done in setActiveRenderTarget
-      //GFX->setClipRect(viewport); 
+      GFX->setActiveRenderTarget(mGFXTextureTarget);   
 
       // setup frustrum
       F32 left, right, top, bottom;
@@ -453,126 +450,60 @@ void RenderRTTExample::prepRenderImage( SceneRenderState *state )
       //Con::printf("%.2f,%.2f,%.2f,%.2f:%.2f,%.2f",left,right,top,bottom,fnear,ffar);
       GFX->setFrustum( left, right, bottom, top, fnear, ffar);            
        
-      // this is set for 2D rendering just like in GUI canvas      
+      // set everything to identity matrices      
       GFX->setProjectionMatrix(MatrixF::Identity);
       GFX->setViewMatrix(MatrixF::Identity);  
       GFX->setWorldMatrix(MatrixF::Identity);  
-      //MatrixF invView(true);
-      //GFX->setWorldMatrix(invView);
-      //invView.inverse();
-      //GFX->setViewMatrix(invView);
-
-      // set ortho for 2D?  
-      /*
-      MatrixF outMat;
-      MathUtils::makeOrthoProjection(&outMat,-1.0f,-1.0f,1.0f,1.0f,0.1f,-10.0f,false);
-      GFX->setOrtho(-1.0f,-1.0f,1.0f,1.0f,0.1f,-10.0f);
-      GFX->setProjectionMatrix(outMat);       
-      */       
-
-      // setup more crap
       
-      //if(GFX->isFrustumOrtho())
-      //   GFX->clear(GFXClearTarget/*|GFXClearZBuffer*/,ColorI(0,64,0),1.0f,0);
-      //else      
-         //GFX->clear(GFXClearTarget/*|GFXClearZBuffer*/,ColorI(0,0,64),1.0f,0);
+      // clearing z buffer messes up render, not sure why      
       GFX->clear(GFXClearTarget/*|GFXClearZBuffer|GFXClearStencil*/,ColorI(0,0,64),1.0f,0);
       
-      GFX->setStateBlock( mNormalSB );
-
-      // gui preparation for rendering
-      //GFX->setClipRect(viewport);
+      GFX->setStateBlock( mNormalSB );  
       
       GFX->setupGenericShaders( GFXDevice::GSModColorTexture );       
 
-      // draw background      
-      GFX->getDrawUtil()->setBitmapModulation(ColorI(255,255,255));            
-                
-      // lets use the warning texture for stuff that needs a texture
-      //GFX->setTexture(0, mWarningTexture);      
+      // set default color to white      
+      GFX->getDrawUtil()->setBitmapModulation(ColorI(255,255,255));                              
 
-      // debug draw the frustum
+      // debug draw the frustum, debugging
       GFX->getDrawUtil()->drawFrustum(GFX->getFrustum(),ColorI(255,0,0));
 
       // drawing a line
       GFX->getDrawUtil()->drawLine(Point2F(-1.0f,0.0f),Point2F(1.0f,0.0f),ColorI(255,255,255));             
-
-      GFXTransformSaver trans2DSaver2;
 
       // do 3D render
       MatrixF outMat(true);      
       MathUtils::makeProjection(&outMat,M_HALFPI_F,1.0f,fnear,ffar,true);      
       outMat.setColumn( 3, Point3F(0.0f,0.0f,0.0f) );
       GFX->setProjectionMatrix(outMat);
-      /*
-      Point4F tmpP;
-      tmpP = viewMatrix.getColumn4F(0);
-      Con::printf("0 %.2f,%.2f,%.2f,%.2f",tmpP.x,tmpP.y,tmpP.z,tmpP.w);
-      tmpP = viewMatrix.getColumn4F(1);
-      Con::printf("1 %.2f,%.2f,%.2f,%.2f",tmpP.x,tmpP.y,tmpP.z,tmpP.w);
-      tmpP = viewMatrix.getColumn4F(2);
-      Con::printf("2 %.2f,%.2f,%.2f,%.2f",tmpP.x,tmpP.y,tmpP.z,tmpP.w);
-      tmpP = viewMatrix.getColumn4F(3);
-      Con::printf("3 %.2f,%.2f,%.2f,%.2f",tmpP.x,tmpP.y,tmpP.z,tmpP.w);
-      */
-      viewMatrix.identity();
-      //GFX->setWorldMatrix(outMat.inverse());
-      //viewMatrix.setPosition(Point3F(0.0f,0.0f,-1.0f));
-      //viewMatrix.
-      //viewMatrix.setRow(4,Point3F(0.0f,0.0f,-1.0f));
-      
+                    
       GFX->setViewMatrix(outMat);      
-      GFX->setWorldMatrix(MatrixF::Identity);      
-
-      //GFX->getDrawUtil()->drawText(mFont, Point2I(-5,-5), "Ooh, text...");
+      GFX->setWorldMatrix(MatrixF::Identity);       
       
       MatrixF newtrans = GFX->getWorldMatrix();
       newtrans = newtrans.set(EulerF(0.0f,mRotParm2,0.0f));  
-      //newtrans.setColumn(3, ); 
-      newtrans.setPosition(Point3F(0.0f,0.0f,mRotParm3+10.0f));
-      //GFX->setWorldMatrix(MatrixF::Identity);
-      GFX->multWorld(newtrans);  
-      //MatrixF vm = GFX->getWorldMatrix();
-      //GFX->setViewMatrix(vm.inverse());
+      newtrans.setPosition(Point3F(0.0f,0.0f,mRotParm3+10.0f));  
+      GFX->setWorldMatrix( newtrans );   // seems to be the same as multWorld?    
+      //GFX->multWorld(newtrans);  // apply transform to world?  not sure, might be a better way to do this
       
       F32 colorMod = mRotParm3/10.0f*128;
       GFX->getDrawUtil()->setBitmapModulation(ColorI(255+colorMod,255+colorMod,255+colorMod));
       GFX->setTexture(0,mWarningTexture);
       draw2DSquare(Point3F(0.0f,0.0f,0.0f),1.5f,0.0f);//mRotParm2); 
 
-      trans2DSaver2.restore();
-
-      /*
-      newtrans.identity();
-      newtrans.inverse();
-      GFX->setProjectionMatrix(newtrans);
-      */
-      GFX->setClipRect(viewport);
-      GFX->setViewMatrix(MatrixF::Identity);  
-      //GFX->setWorldMatrix(MatrixF::Identity);  // already set by setClipRect
-
-      /*
-      Con::warnf("Printing world matrix:");
-      RenderRTTExample::printMatrix(GFX->getWorldMatrix());
-      Con::warnf("Printing projection matrix:");
-      RenderRTTExample::printMatrix(GFX->getProjectionMatrix());
-      Con::warnf("Printing view matrix:");
-      RenderRTTExample::printMatrix(GFX->getViewMatrix());     
-      */
-
-      // write some text      
-      GFX->disableShaders();
-      /*
+      // setup matrices for GUI rendering
+      GFX->setViewMatrix(MatrixF::Identity);  // must be called before setClipRect
+      GFX->setClipRect(viewport);      
+      //GFX->setWorldMatrix(MatrixF::Identity);  // already set by setClipRect     
+                       
+      // optional scale text or scale with font size selection
       viewMatrix = GFX->getViewMatrix();
-      viewMatrix.scale(0.1f);  
-      viewMatrix.setPosition(Point3F(0.0f,0.0f,5.0f*mRotParm3));    
-      //viewMatrix.setColumn(2,Point4F(0,0,1,0));
-      GFX->setViewMatrix(viewMatrix);
-      */
-      //GFX->setProjectionMatrix(viewMatrix.inverse());
+      F32 fscale = 5.0f;
+      viewMatrix.scale(fscale);        
+      GFX->setViewMatrix(viewMatrix);      
 
-      //GFX->setClipRect(viewport);
-      U32 textPos = mRotParm4*viewport.len_x()/2 + viewport.len_x()/2;
+      // write some text 
+      U32 textPos = mRotParm4*viewport.len_x()/(2*fscale) + viewport.len_x()/(2*fscale);
       GFX->getDrawUtil()->setBitmapModulation( ColorI(255,255,255,255) ); 
       GFX->getDrawUtil()->drawText(mFont, Point2I(textPos,textPos), "Ooh, text...");     
 
