@@ -5,7 +5,7 @@
 singleton NamedTexTargetObject(MyTexTargetObject) 
 {
    targetName = "hellotex";
-   texSize = "512";
+   texDims = "1024 1024";
 };
 
 /*
