@@ -18,6 +18,28 @@ singleton Material(testcube_Hello)
 };
 
 /*
+ Helper function
+*/
+function createAudioObjects(){
+   warn("Starting up audio loopback visualization...");
+
+   // audio loopback
+   startAudioLoopBack();
+   if(!isObject($FFTObj)){
+      //$FFTObj = new FFTObject(FFTObject1); 
+      $FFTObj = new LoopBackObject(LoopBackObject1); 
+      addAudioLoopBackObject($FFTObj);
+   }   
+
+   // set object on AudioTexObject1
+   if(isObject(AudioTexObject1)){
+      AudioTexObject1.setAudioObject($FFTObj.getName());
+   }else{
+      warn("Could not find: AudioTexObject1");
+   }  
+}
+
+/*
  Example of object that could be put in a mission file, or loaded using other means.
 */
 new AudioTextureObject(AudioTexObject1) {
