@@ -104,8 +104,6 @@ bool RenderRTTExample::onAdd()
    // I believe the texture gets destroyed when the mTextureBuffer goes out of scope.
    mTextureBuffer.set(1024, 1024, GFXFormatR8G8B8X8, &GFXDefaultRenderTargetProfile, "", 0); 
 
-   mBackGroundBuffer.set(1024, 1024, GFXFormatR8G8B8X8, &GFXDefaultRenderTargetProfile, "", 0);      
-
    // setup material
    // this is here because it will fail on the first network update
    if( isClientObject() ){
@@ -373,9 +371,6 @@ void RenderRTTExample::prepRenderImage( SceneRenderState *state )
    if(mTextureBuffer.isValid())
    {
       GFXTexHandle tmpTexHandle = mTextureBuffer.getPointer();
-      GFXTexHandle tmpBGHandle = mBackGroundBuffer;
-      static bool firstBGPass = 0;
-
 
       RectI viewport(0,0,tmpTexHandle->getWidth(),tmpTexHandle->getHeight());
 
@@ -444,10 +439,7 @@ void RenderRTTExample::prepRenderImage( SceneRenderState *state )
       mGFXTextureTarget->attachTexture(GFXTextureTarget::Color0,tmpTexHandle);
       // save render target and set new render target
       GFX->pushActiveRenderTarget();      
-      GFX->setActiveRenderTarget(mGFXTextureTarget);         
-
-      // clearing z buffer messes up render, not sure why      
-      GFX->clear(GFXClearTarget/*|GFXClearZBuffer/*|GFXClearStencil*/,ColorI(0,0,64),1.0f,0);                 
+      GFX->setActiveRenderTarget(mGFXTextureTarget);   
 
       // setup frustrum
       F32 left, right, top, bottom;
@@ -461,17 +453,10 @@ void RenderRTTExample::prepRenderImage( SceneRenderState *state )
       // set everything to identity matrices      
       GFX->setProjectionMatrix(MatrixF::Identity);
       GFX->setViewMatrix(MatrixF::Identity);  
-      GFX->setWorldMatrix(MatrixF::Identity);
-
-      // draw background
-      if(firstBGPass){
-         GFX->setTexture(0,tmpBGHandle);
-
-         // draw here
-         GFX->getDrawUtil()->setBitmapModulation(ColorI(255,255,255,128));
-         GFX->setTexture(0,tmpBGHandle);      
-         draw2DSquare(Point3F(0.0f,0.0f,0.0f),2.0f,mRotParm2); 
-      }             
+      GFX->setWorldMatrix(MatrixF::Identity);  
+      
+      // clearing z buffer messes up render, not sure why      
+      GFX->clear(GFXClearTarget/*|GFXClearZBuffer|GFXClearStencil*/,ColorI(0,0,64),1.0f,0);
       
       GFX->setStateBlock( mNormalSB );  
       
@@ -497,20 +482,14 @@ void RenderRTTExample::prepRenderImage( SceneRenderState *state )
       
       MatrixF newtrans = GFX->getWorldMatrix();
       newtrans = newtrans.set(EulerF(0.0f,mRotParm2,0.0f));  
-      newtrans.setPosition(Point3F(0.0f,0.0f,mRotParm3+8.0f));  
+      newtrans.setPosition(Point3F(0.0f,0.0f,mRotParm3+10.0f));  
       GFX->setWorldMatrix( newtrans );   // seems to be the same as multWorld?    
       //GFX->multWorld(newtrans);  // apply transform to world?  not sure, might be a better way to do this
       
       F32 colorMod = mRotParm3/10.0f*128;
       GFX->getDrawUtil()->setBitmapModulation(ColorI(255+colorMod,255+colorMod,255+colorMod));
-            
-      GFX->setTexture(0,mWarningTexture);      
+      GFX->setTexture(0,mWarningTexture);
       draw2DSquare(Point3F(0.0f,0.0f,0.0f),1.5f,0.0f);//mRotParm2); 
-      if(firstBGPass){
-         GFX->setTexture(0,tmpBGHandle);
-         //GFX->getDrawUtil()->setBitmapModulation(ColorI(255+colorMod,255+colorMod,255+colorMod,128));
-         draw2DSquare(Point3F(0.0f,0.0f,0.0f),1.0f,0.0f);
-      }
 
       // setup matrices for GUI rendering
       GFX->setViewMatrix(MatrixF::Identity);  // must be called before setClipRect
@@ -526,48 +505,14 @@ void RenderRTTExample::prepRenderImage( SceneRenderState *state )
       // write some text 
       U32 textPos = mRotParm4*viewport.len_x()/(2*fscale) + viewport.len_x()/(2*fscale);
       GFX->getDrawUtil()->setBitmapModulation( ColorI(255,255,255,255) ); 
-      GFX->getDrawUtil()->drawText(mFont, Point2I(textPos,textPos), "Ooh, text...");           
+      GFX->getDrawUtil()->drawText(mFont, Point2I(textPos,textPos), "Ooh, text...");     
 
       // resolve texture
-      mGFXTextureTarget->resolve();            
+      mGFXTextureTarget->resolve();
             
       // restore render target settings
       GFX->popActiveRenderTarget(); 
 
-      // render to background texture      
-      if(mBackGroundBuffer.isValid()){         
-         // prepare render texture
-         GFXTextureTargetRef mGFXTextureTarget2;
-         mGFXTextureTarget2 = GFX->allocRenderToTextureTarget();        
-         mGFXTextureTarget2->attachTexture(GFXTextureTarget::Color0,tmpBGHandle);
-         // save render target and set new render target
-         GFX->pushActiveRenderTarget();      
-         GFX->setActiveRenderTarget(mGFXTextureTarget2);           
-
-         GFX->clear(GFXClearTarget,ColorI(0,0,0),1.0f,0);
-
-         //GFX->setViewMatrix(MatrixF::Identity);  // must be called before setClipRect
-         //GFX->setClipRect(viewport);  
-
-         // set everything to identity matrices      
-         GFX->setProjectionMatrix(MatrixF::Identity);
-         GFX->setViewMatrix(MatrixF::Identity);  
-         GFX->setWorldMatrix(MatrixF::Identity);
-
-         // draw here
-         GFX->getDrawUtil()->setBitmapModulation(ColorI(255,255,255));
-         GFX->setTexture(0,tmpTexHandle);      
-         draw2DSquare(Point3F(0.0f,0.0f,0.0f),2.2f,0.0f);     
-         
-         // resolve texture
-         mGFXTextureTarget2->resolve(); 
-
-         // restore render target settings
-         GFX->popActiveRenderTarget();
-
-         // render using background next time
-         firstBGPass = 1;
-      }
    }
 
    // done doing our custom RTT
@@ -617,7 +562,7 @@ void RenderRTTExample::advanceTime( F32 dt )
       mRotParm2 = tP2;
 
    static F32 p3Dir = 1.0f;
-   mRotParm3 += dt*p3Dir*1.5f;//5.0f;
+   mRotParm3 += dt*p3Dir*5.0f;
    F32 tP3 = mClampF(mRotParm3,-7.5f,0.0f);
    if(tP3 != mRotParm3){
       p3Dir *= -1.0f;

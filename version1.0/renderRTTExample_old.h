@@ -110,7 +110,6 @@ class RenderRTTExample : public SceneObject
    NamedTexTarget mTextureTarget;
    // The texture to target
    GFXTexHandle mTextureBuffer;
-   GFXTexHandle mBackGroundBuffer;
    // The name of the texture to target
    String mTexTargetName;
 
